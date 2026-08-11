@@ -58,4 +58,3 @@ public struct BarcodeGenerator: Sendable {
         }.value
     }
 }
-

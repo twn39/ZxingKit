@@ -375,9 +375,9 @@ struct ZxingKitTests {
         #expect(results.count == 1)
 
         // Verify all enum cases for complete coverage
-        let _ = Binarizer.allCases
-        let _ = EanAddOnSymbol.allCases
-        let _ = TextMode.allCases
+        _ = Binarizer.allCases
+        _ = EanAddOnSymbol.allCases
+        _ = TextMode.allCases
     }
 
     @Test("BarcodeVideoOutputDelegate error callback handling")
@@ -528,9 +528,6 @@ struct ZxingKitTests {
     }
     #endif
 }
-
-
-
 
 extension Binarizer: @retroactive CaseIterable {
     public static var allCases: [Binarizer] = [.localAverage, .globalHistogram, .fixedThreshold, .boolCast]

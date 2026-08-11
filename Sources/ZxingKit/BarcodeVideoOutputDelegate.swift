@@ -177,5 +177,3 @@ private final class NSLockState: LockProtectedStateImpl {
     }
 }
 #endif
-
-

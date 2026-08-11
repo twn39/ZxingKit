@@ -1,0 +1,16 @@
+excluded:
+  - third_party
+  - .build
+  - .codegraph
+
+disabled_rules:
+  - line_length
+  - type_body_length
+  - file_length
+
+identifier_name:
+  min_length: 1
+  max_length: 40
+
+large_tuple:
+  warning: 4

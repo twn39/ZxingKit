@@ -110,4 +110,3 @@ public struct BarcodeScanner: Sendable {
     }
     #endif
 }
-

@@ -10,7 +10,7 @@ let package = Package(
         .library(
             name: "ZxingKit",
             targets: ["ZxingKit"]
-        ),
+        )
     ],
     targets: [
         // C++ 核心库 (现在包含 Zint)
@@ -50,7 +50,7 @@ let package = Package(
         .testTarget(
             name: "ZxingKitTests",
             dependencies: ["ZxingKit"]
-        ),
+        )
     ],
     cxxLanguageStandard: .cxx20
 )

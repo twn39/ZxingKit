@@ -132,5 +132,3 @@ private final class NSLockAtomicFlag: AtomicFlagImpl {
     }
 }
 #endif
-
-
