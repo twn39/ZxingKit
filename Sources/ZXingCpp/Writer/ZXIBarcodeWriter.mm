@@ -28,6 +28,10 @@ using namespace ZXing;
 
 -(CGImageRef)writeData:(NSData *)data
                  error:(NSError *__autoreleasing  _Nullable *)error {
+    if (!data || [data length] == 0) {
+        SetNSError(error, ZXIWriterError, "Data is empty or nil");
+        return nil;
+    }
     return [self encodeBytes:(const uint8_t *)[data bytes]
                       length:(int)[data length]
                       format:self.options.format
@@ -40,6 +44,10 @@ using namespace ZXing;
 
 -(CGImageRef)writeString:(NSString *)contents
                    error:(NSError *__autoreleasing  _Nullable *)error {
+    if (!contents) {
+        SetNSError(error, ZXIWriterError, "Contents string is nil");
+        return nil;
+    }
     return [self encodeText:[contents UTF8String] ?: ""
                      format:self.options.format
                       width:self.options.width
@@ -84,6 +92,9 @@ using namespace ZXing;
     } catch(std::exception &e) {
         SetNSError(error, ZXIWriterError, e.what());
         return nil;
+    } catch(...) {
+        SetNSError(error, ZXIWriterError, "An unknown error occurred during barcode encoding");
+        return nil;
     }
 }
 
@@ -95,6 +106,10 @@ using namespace ZXing;
                   margin:(int)margin
                  ecLevel:(int)ecLevel
                    error:(NSError *__autoreleasing  _Nullable *)error {
+    if (!data || length <= 0) {
+        SetNSError(error, ZXIWriterError, "Data pointer is NULL or length is non-positive");
+        return nil;
+    }
     try {
         BarcodeFormat zf = BarcodeFormatFromZXIFormat(format);
         std::string optStr = "";
@@ -122,6 +137,9 @@ using namespace ZXing;
         return [self imageToCGImage:img];
     } catch(std::exception &e) {
         SetNSError(error, ZXIWriterError, e.what());
+        return nil;
+    } catch(...) {
+        SetNSError(error, ZXIWriterError, "An unknown error occurred during barcode byte encoding");
         return nil;
     }
 }

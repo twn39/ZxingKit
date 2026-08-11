@@ -31,10 +31,15 @@ public final class CameraFrameScanner: Sendable {
             return false // Frame dropped due to backpressure
         }
 
+        struct SendableSampleBuffer: @unchecked Sendable {
+            let buffer: CMSampleBuffer
+        }
+        let wrapped = SendableSampleBuffer(buffer: sampleBuffer)
+
         Task.detached(priority: .userInitiated) {
             defer { self.isProcessing.unlock() }
             do {
-                let results = try self.scanner.read(sampleBuffer: sampleBuffer, roi: roi)
+                let results = try self.scanner.read(sampleBuffer: wrapped.buffer, roi: roi)
                 completion(.success(results))
             } catch {
                 completion(.failure(error))
@@ -59,7 +64,7 @@ public final class CameraFrameScanner: Sendable {
 }
 
 /// A thread-safe, non-blocking atomic flag for backpressure detection.
-private final class AtomicFlag: Sendable {
+final class AtomicFlag: Sendable {
     private let impl: any AtomicFlagImpl
 
     init() {
@@ -79,13 +84,13 @@ private final class AtomicFlag: Sendable {
     }
 }
 
-private protocol AtomicFlagImpl: Sendable {
+protocol AtomicFlagImpl: Sendable {
     func tryLock() -> Bool
     func unlock()
 }
 
 @available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
-private final class OSUnfairAtomicFlag: AtomicFlagImpl {
+final class OSUnfairAtomicFlag: AtomicFlagImpl {
     private struct State {
         var isProcessing = false
     }
@@ -108,7 +113,7 @@ private final class OSUnfairAtomicFlag: AtomicFlagImpl {
     }
 }
 
-private final class NSLockAtomicFlag: AtomicFlagImpl {
+final class NSLockAtomicFlag: AtomicFlagImpl {
     private let lock = NSLock()
     private final class Storage: @unchecked Sendable {
         var isProcessing = false

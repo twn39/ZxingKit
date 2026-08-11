@@ -6,6 +6,10 @@ import AVFoundation
 import ZXingCpp
 @testable import ZxingKit
 
+#if canImport(AppKit) && !targetEnvironment(macCatalyst)
+import AppKit
+#endif
+
 @Suite("ZxingKit Integration Tests")
 struct ZxingKitTests {
 
@@ -315,7 +319,23 @@ struct ZxingKitTests {
         let pixelBuffer = try #require(makePixelBuffer(from: cgImage))
         let sampleBuffer = try #require(makeSampleBuffer(from: pixelBuffer))
 
-        let videoDelegate = BarcodeVideoOutputDelegate(scanner: BarcodeScanner(formats: [.qrCode]))
+        let videoDelegate = BarcodeVideoOutputDelegate(scanner: BarcodeScanner(formats: [.qrCode]), roi: CGRect(x: 0, y: 0, width: 1, height: 1))
+
+        final class CallbackState: @unchecked Sendable {
+            var onResultsCalled = false
+            var onErrorCalled = false
+        }
+        let callbackState = CallbackState()
+
+        videoDelegate.onResults = { results in
+            if !results.isEmpty {
+                callbackState.onResultsCalled = true
+            }
+        }
+        videoDelegate.onError = { _ in
+            callbackState.onErrorCalled = true
+        }
+
         let output = AVCaptureVideoDataOutput()
 
         // Simulate AVFoundation capture output callback
@@ -326,6 +346,62 @@ struct ZxingKitTests {
             #expect(results.count == 1)
             #expect(results.first?.text == textToEncode)
             break
+        }
+
+        #expect(callbackState.onResultsCalled == true)
+
+        // Error callback verification
+        var invalidPixelBuffer: CVPixelBuffer?
+        CVPixelBufferCreate(kCFAllocatorDefault, 0, 0, kCVPixelFormatType_32ARGB, nil, &invalidPixelBuffer)
+        if let invBuffer = invalidPixelBuffer, let invSampleBuffer = makeSampleBuffer(from: invBuffer) {
+            let errorDelegate = BarcodeVideoOutputDelegate(scanner: BarcodeScanner(formats: [.qrCode]))
+            errorDelegate.onError = { _ in
+                callbackState.onErrorCalled = true
+            }
+            errorDelegate.captureOutput(output, didOutput: invSampleBuffer, from: AVCaptureConnection(inputPorts: [], output: output))
+
+            try await Task.sleep(nanoseconds: 100_000_000)
+            #expect(callbackState.onErrorCalled == true)
+        }
+    }
+
+    @Test("Direct testing for LockProtectedState and lock implementations")
+    func testLockProtectedStateDirectly() throws {
+        let lockState = LockProtectedState()
+        #expect(lockState.getRoi() == nil)
+        let rect = CGRect(x: 5, y: 5, width: 50, height: 50)
+        lockState.setRoi(rect)
+        #expect(lockState.getRoi() == rect)
+
+        lockState.setOnResults { _ in }
+        #expect(lockState.getOnResults() != nil)
+
+        lockState.setOnError { _ in }
+        #expect(lockState.getOnError() != nil)
+
+        let snap = lockState.snapshot()
+        #expect(snap.roi == rect)
+
+        if #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) {
+            let unfair = OSUnfairLockState()
+            unfair.setRoi(rect)
+            #expect(unfair.getRoi() == rect)
+            unfair.setOnResults { _ in }
+            #expect(unfair.getOnResults() != nil)
+            unfair.setOnError { _ in }
+            #expect(unfair.getOnError() != nil)
+            #expect(unfair.snapshot().roi == rect)
+        }
+
+        let atomic = AtomicFlag()
+        #expect(atomic.tryLock() == true)
+        atomic.unlock()
+
+        if #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) {
+            let unfairAtomic = OSUnfairAtomicFlag()
+            #expect(unfairAtomic.tryLock() == true)
+            #expect(unfairAtomic.tryLock() == false)
+            unfairAtomic.unlock()
         }
     }
 
@@ -525,18 +601,103 @@ struct ZxingKitTests {
         let asyncResults = try await scanner.readAsync(image: asyncNsImage)
         #expect(asyncResults.count == 1)
         #expect(asyncResults.first?.text == textToEncode)
+
+        // Invalid NSImage without underlying CGImage representation -> throws unreadableImage
+        let emptyNSImage = AppKit.NSImage(size: NSSize(width: 0, height: 0))
+        #expect(throws: ZxingError.self) {
+            _ = try scanner.read(image: emptyNSImage)
+        }
+        await #expect(throws: ZxingError.self) {
+            _ = try await scanner.readAsync(image: emptyNSImage)
+        }
+
+        let dataImage = try #require(try generator.writeImage(data: Data(textToEncode.utf8)))
+        #expect(try scanner.read(image: dataImage).count == 1)
+
+        let asyncDataImage = try #require(try await generator.writeImageAsync(data: Data(textToEncode.utf8)))
+        #expect(try await scanner.readAsync(image: asyncDataImage).count == 1)
     }
     #endif
+
+    @Test("Direct testing for NSLockState fallback lock implementation")
+    func testNSLockStateDirectly() throws {
+        let lockState = NSLockState()
+
+        #expect(lockState.getRoi() == nil)
+        let rect = CGRect(x: 10, y: 10, width: 100, height: 100)
+        lockState.setRoi(rect)
+        #expect(lockState.getRoi() == rect)
+
+        #expect(lockState.getOnResults() == nil)
+        lockState.setOnResults { _ in }
+        #expect(lockState.getOnResults() != nil)
+
+        #expect(lockState.getOnError() == nil)
+        lockState.setOnError { _ in }
+        #expect(lockState.getOnError() != nil)
+
+        let snap = lockState.snapshot()
+        #expect(snap.roi == rect)
+        #expect(snap.onResults != nil)
+        #expect(snap.onError != nil)
+    }
+
+    @Test("Direct testing for NSLockAtomicFlag fallback implementation")
+    func testNSLockAtomicFlagDirectly() throws {
+        let flag = NSLockAtomicFlag()
+
+        #expect(flag.tryLock() == true)
+        #expect(flag.tryLock() == false, "Second lock attempt while locked should return false")
+        flag.unlock()
+        #expect(flag.tryLock() == true, "Lock after unlock should return true")
+        flag.unlock()
+    }
+
+    @Test("CameraFrameScanner error handling callback path")
+    func testCameraFrameScannerErrorPath() async throws {
+        let scanner = BarcodeScanner(formats: [.qrCode])
+        let frameScanner = CameraFrameScanner(scanner: scanner)
+
+        var pixelBuffer: CVPixelBuffer?
+        CVPixelBufferCreate(kCFAllocatorDefault, 0, 0, kCVPixelFormatType_32ARGB, nil, &pixelBuffer)
+
+        if let buffer = pixelBuffer, let sampleBuffer = makeSampleBuffer(from: buffer) {
+            let result: Result<[BarcodeResult], Error> = await withCheckedContinuation { continuation in
+                frameScanner.processFrame(sampleBuffer) { res in
+                    continuation.resume(returning: res)
+                }
+            }
+            let isError: Bool
+            switch result {
+            case .failure: isError = true
+            case .success: isError = false
+            }
+            #expect(isError, "Expected failure for zero-sized pixel buffer")
+        }
+    }
+
+    @Test("ObjC++ bridge boundary defensive null and error handling checks")
+    func testObjCBridgeDefensiveNullChecks() throws {
+        let zxiWriter = ZXIBarcodeWriter()
+
+        #expect(throws: Error.self) {
+            _ = try zxiWriter.write(Data())
+        }
+
+        #expect(throws: Error.self) {
+            _ = try zxiWriter.write("")
+        }
+    }
 }
 
-extension Binarizer: @retroactive CaseIterable {
+extension Binarizer: CaseIterable {
     public static var allCases: [Binarizer] = [.localAverage, .globalHistogram, .fixedThreshold, .boolCast]
 }
 
-extension EanAddOnSymbol: @retroactive CaseIterable {
+extension EanAddOnSymbol: CaseIterable {
     public static var allCases: [EanAddOnSymbol] = [.ignore, .read, .require]
 }
 
-extension TextMode: @retroactive CaseIterable {
+extension TextMode: CaseIterable {
     public static var allCases: [TextMode] = [.plain, .eci, .hri, .escaped, .hex, .hexEci]
 }

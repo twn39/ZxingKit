@@ -68,13 +68,13 @@ public final class BarcodeVideoOutputDelegate: NSObject, AVCaptureVideoDataOutpu
     }
 }
 
-private struct VideoDelegateState {
+struct VideoDelegateState {
     var roi: CGRect?
     var onResults: (@Sendable ([BarcodeResult]) -> Void)?
     var onError: (@Sendable (Error) -> Void)?
 }
 
-private final class LockProtectedState: Sendable {
+final class LockProtectedState: Sendable {
     private let impl: any LockProtectedStateImpl
 
     init() {
@@ -99,7 +99,7 @@ private final class LockProtectedState: Sendable {
     func setOnError(_ callback: (@Sendable (Error) -> Void)?) { impl.setOnError(callback) }
 }
 
-private protocol LockProtectedStateImpl: Sendable {
+protocol LockProtectedStateImpl: Sendable {
     func snapshot() -> (roi: CGRect?, onResults: (@Sendable ([BarcodeResult]) -> Void)?, onError: (@Sendable (Error) -> Void)?)
     func getRoi() -> CGRect?
     func setRoi(_ roi: CGRect?)
@@ -110,7 +110,7 @@ private protocol LockProtectedStateImpl: Sendable {
 }
 
 @available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
-private final class OSUnfairLockState: LockProtectedStateImpl {
+final class OSUnfairLockState: LockProtectedStateImpl {
     private let lock = OSAllocatedUnfairLock(initialState: VideoDelegateState())
 
     func snapshot() -> (roi: CGRect?, onResults: (@Sendable ([BarcodeResult]) -> Void)?, onError: (@Sendable (Error) -> Void)?) {
@@ -127,7 +127,7 @@ private final class OSUnfairLockState: LockProtectedStateImpl {
     func setOnError(_ callback: (@Sendable (Error) -> Void)?) { lock.withLock { $0.onError = callback } }
 }
 
-private final class NSLockState: LockProtectedStateImpl {
+final class NSLockState: LockProtectedStateImpl {
     private let lock = NSLock()
     private final class Storage: @unchecked Sendable {
         var state = VideoDelegateState()

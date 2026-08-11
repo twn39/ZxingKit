@@ -74,6 +74,11 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
 - (NSArray<ZXIResult *> *)readCVPixelBuffer:(nonnull CVPixelBufferRef)pixelBuffer
                                     cropRect:(CGRect)cropRect
                                        error:(NSError *__autoreleasing _Nullable *)error {
+    if (!pixelBuffer) {
+        SetNSError(error, ZXIReaderError, "Invalid CVPixelBuffer (NULL)");
+        return @[];
+    }
+
     OSType pixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer);
 
     switch (pixelFormat) {
@@ -81,9 +86,17 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
         case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: {
             NSInteger cols = CVPixelBufferGetWidth(pixelBuffer);
             NSInteger rows = CVPixelBufferGetHeight(pixelBuffer);
+            if (cols <= 0 || rows <= 0) {
+                return @[];
+            }
             NSInteger bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0);
             CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
             const uint8_t * bytes = static_cast<const uint8_t *>(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0));
+            if (!bytes) {
+                CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+                SetNSError(error, ZXIReaderError, "Failed to get base address of CVPixelBuffer");
+                return @[];
+            }
             ImageView imageView = ImageView(
                                             static_cast<const uint8_t *>(bytes),
                                             static_cast<int>(cols),
@@ -98,9 +111,17 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
         case kCVPixelFormatType_32BGRA: {
             NSInteger cols = CVPixelBufferGetWidth(pixelBuffer);
             NSInteger rows = CVPixelBufferGetHeight(pixelBuffer);
+            if (cols <= 0 || rows <= 0) {
+                return @[];
+            }
             NSInteger bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
             CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
             const uint8_t * bytes = static_cast<const uint8_t *>(CVPixelBufferGetBaseAddress(pixelBuffer));
+            if (!bytes) {
+                CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+                SetNSError(error, ZXIReaderError, "Failed to get base address of CVPixelBuffer");
+                return @[];
+            }
             ImageView imageView = ImageView(
                                             static_cast<const uint8_t *>(bytes),
                                             static_cast<int>(cols),
@@ -115,9 +136,17 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
         case kCVPixelFormatType_32ARGB: {
             NSInteger cols = CVPixelBufferGetWidth(pixelBuffer);
             NSInteger rows = CVPixelBufferGetHeight(pixelBuffer);
+            if (cols <= 0 || rows <= 0) {
+                return @[];
+            }
             NSInteger bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
             CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
             const uint8_t * bytes = static_cast<const uint8_t *>(CVPixelBufferGetBaseAddress(pixelBuffer));
+            if (!bytes) {
+                CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+                SetNSError(error, ZXIReaderError, "Failed to get base address of CVPixelBuffer");
+                return @[];
+            }
             ImageView imageView = ImageView(
                                             static_cast<const uint8_t *>(bytes),
                                             static_cast<int>(cols),
@@ -132,9 +161,17 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
         case kCVPixelFormatType_32RGBA: {
             NSInteger cols = CVPixelBufferGetWidth(pixelBuffer);
             NSInteger rows = CVPixelBufferGetHeight(pixelBuffer);
+            if (cols <= 0 || rows <= 0) {
+                return @[];
+            }
             NSInteger bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
             CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
             const uint8_t * bytes = static_cast<const uint8_t *>(CVPixelBufferGetBaseAddress(pixelBuffer));
+            if (!bytes) {
+                CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+                SetNSError(error, ZXIReaderError, "Failed to get base address of CVPixelBuffer");
+                return @[];
+            }
             ImageView imageView = ImageView(
                                             static_cast<const uint8_t *>(bytes),
                                             static_cast<int>(cols),
@@ -148,7 +185,12 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
         }
     }
 
-    return [self readCIImage:[[CIImage alloc] initWithCVImageBuffer:pixelBuffer] cropRect:cropRect error:error];
+    CIImage *ciImg = [[CIImage alloc] initWithCVImageBuffer:pixelBuffer];
+    if (!ciImg) {
+        SetNSError(error, ZXIReaderError, "Failed to convert CVPixelBuffer to CIImage");
+        return @[];
+    }
+    return [self readCIImage:ciImg cropRect:cropRect error:error];
 }
 
 - (NSArray<ZXIResult *> *)readCMSampleBuffer:(nonnull CMSampleBufferRef)sampleBuffer
@@ -159,6 +201,10 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
 - (NSArray<ZXIResult *> *)readCMSampleBuffer:(nonnull CMSampleBufferRef)sampleBuffer
                                      cropRect:(CGRect)cropRect
                                         error:(NSError *__autoreleasing _Nullable *)error {
+    if (!sampleBuffer) {
+        SetNSError(error, ZXIReaderError, "Invalid CMSampleBuffer (NULL)");
+        return @[];
+    }
     CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
     if (!pixelBuffer) {
         SetNSError(error, ZXIReaderError, "CMSampleBuffer does not contain a valid CVPixelBuffer");
@@ -173,8 +219,12 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
 }
 
 - (NSArray<ZXIResult *> *)readCIImage:(nonnull CIImage *)image
-                              cropRect:(CGRect)cropRect
-                                 error:(NSError *__autoreleasing _Nullable *)error {
+                               cropRect:(CGRect)cropRect
+                                  error:(NSError *__autoreleasing _Nullable *)error {
+    if (!image) {
+        SetNSError(error, ZXIReaderError, "Invalid CIImage (nil)");
+        return @[];
+    }
     CGImageRef cgImage = [self.ciContext createCGImage:image fromRect:image.extent];
     if (!cgImage) {
         SetNSError(error, ZXIReaderError, "Failed to create CGImage from CIImage");
@@ -186,13 +236,17 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
 }
 
 - (NSArray<ZXIResult *> *)readCGImage:(nonnull CGImageRef)image
-                                error:(NSError *__autoreleasing _Nullable *)error {
+                                 error:(NSError *__autoreleasing _Nullable *)error {
     return [self readCGImage:image cropRect:CGRectZero error:error];
 }
 
 - (NSArray<ZXIResult *> *)readCGImage:(nonnull CGImageRef)image
-                              cropRect:(CGRect)cropRect
-                                 error:(NSError *__autoreleasing _Nullable *)error {
+                               cropRect:(CGRect)cropRect
+                                  error:(NSError *__autoreleasing _Nullable *)error {
+    if (!image) {
+        SetNSError(error, ZXIReaderError, "Invalid CGImageRef (NULL)");
+        return @[];
+    }
     size_t fullCols = CGImageGetWidth(image);
     size_t fullRows = CGImageGetHeight(image);
     if (fullCols == 0 || fullRows == 0) {
