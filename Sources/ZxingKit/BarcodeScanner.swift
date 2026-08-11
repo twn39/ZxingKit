@@ -122,9 +122,12 @@ public struct BarcodeScanner: Sendable {
     /// - Returns: An array of detected ``BarcodeResult``.
     /// - Throws: Scanning errors if decoding fails.
     public func readAsync(cgImage: CGImage, roi: CGRect? = nil) async throws -> [BarcodeResult] {
-        // CGImage is @unchecked Sendable in Apple SDK; no wrapper needed in Swift 6.
+        // Swift 6.0 (Xcode 16.0) requires explicit transfer for sending closures even for
+        // @unchecked Sendable types. Use a minimal wrapper to satisfy the compiler.
+        struct Wrapper: @unchecked Sendable { let value: CGImage }
+        let box = Wrapper(value: cgImage)
         return try await Task.detached(priority: .userInitiated) {
-            try self.read(cgImage: cgImage, roi: roi)
+            try self.read(cgImage: box.value, roi: roi)
         }.value
     }
 
@@ -136,9 +139,12 @@ public struct BarcodeScanner: Sendable {
     /// - Returns: An array of detected ``BarcodeResult``.
     /// - Throws: Scanning errors if decoding fails.
     public func readAsync(ciImage: CIImage, roi: CGRect? = nil) async throws -> [BarcodeResult] {
-        // CIImage is @unchecked Sendable in Apple SDK.
+        // Swift 6.0 (Xcode 16.0) raises a sending error for CIImage even though it is
+        // @unchecked Sendable. Wrap it to satisfy the strict transfer requirement.
+        struct Wrapper: @unchecked Sendable { let value: CIImage }
+        let box = Wrapper(value: ciImage)
         return try await Task.detached(priority: .userInitiated) {
-            try self.read(ciImage: ciImage, roi: roi)
+            try self.read(ciImage: box.value, roi: roi)
         }.value
     }
     #endif
