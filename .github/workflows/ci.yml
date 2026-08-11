@@ -8,17 +8,27 @@ on:
 
 jobs:
   build-and-test:
-    name: Build & Test (macOS)
+    name: Build & Test (Xcode ${{ matrix.xcode }}, Swift ${{ matrix.swift }})
     runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - xcode: '16.0'
+            swift: '6.0'
+          - xcode: '16.3'
+            swift: '6.1'
+          - xcode: '16.4'
+            swift: '6.2'
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Xcode 16
+      - name: Set up Xcode ${{ matrix.xcode }}
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16'
+          xcode-version: ${{ matrix.xcode }}
 
       - name: Run SwiftLint
         run: |
@@ -28,7 +38,7 @@ jobs:
             echo "SwiftLint not installed on runner, skipping lint check."
           fi
 
-      - name: Build Package (Swift 6.0+)
+      - name: Build Package (Swift ${{ matrix.swift }})
         run: |
           swift build
 
@@ -40,6 +50,6 @@ jobs:
       - name: Upload Code Coverage Report
         uses: actions/upload-artifact@v4
         with:
-          name: code-coverage-report
+          name: code-coverage-xcode-${{ matrix.xcode }}
           path: .build/codecov/html/
           if-no-files-found: ignore

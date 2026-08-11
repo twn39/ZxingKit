@@ -118,8 +118,12 @@ public struct BarcodeScanner: Sendable {
     /// - Returns: An array of detected ``BarcodeResult``.
     /// - Throws: Scanning errors if decoding fails.
     public func readAsync(cgImage: CGImage, roi: CGRect? = nil) async throws -> [BarcodeResult] {
-        try await Task.detached(priority: .userInitiated) {
-            try self.read(cgImage: cgImage, roi: roi)
+        struct SendableCGImage: @unchecked Sendable {
+            let image: CGImage
+        }
+        let wrapped = SendableCGImage(image: cgImage)
+        return try await Task.detached(priority: .userInitiated) {
+            try self.read(cgImage: wrapped.image, roi: roi)
         }.value
     }
 
@@ -131,8 +135,12 @@ public struct BarcodeScanner: Sendable {
     /// - Returns: An array of detected ``BarcodeResult``.
     /// - Throws: Scanning errors if decoding fails.
     public func readAsync(ciImage: CIImage, roi: CGRect? = nil) async throws -> [BarcodeResult] {
-        try await Task.detached(priority: .userInitiated) {
-            try self.read(ciImage: ciImage, roi: roi)
+        struct SendableCIImage: @unchecked Sendable {
+            let image: CIImage
+        }
+        let wrapped = SendableCIImage(image: ciImage)
+        return try await Task.detached(priority: .userInitiated) {
+            try self.read(ciImage: wrapped.image, roi: roi)
         }.value
     }
     #endif
