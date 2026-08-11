@@ -1,14 +1,9 @@
 import Foundation
-// @preconcurrency: CGImage (CoreGraphics) and CIImage (CoreImage) are immutable,
-// thread-safe CF objects. Apple has not yet fully audited these for Sendable in all
-// Swift versions. @preconcurrency suppresses the Swift 6.0 conservative "sending"
-// diagnostic without @unchecked Sendable wrappers, which is the semantically correct
-// approach. CVPixelBuffer/CMSampleBuffer are mutable; their wrappers are kept below.
 import CoreGraphics
 import ZXingCpp
 
 #if canImport(CoreImage)
-@preconcurrency import CoreImage
+import CoreImage
 #endif
 
 #if canImport(CoreVideo)
@@ -18,6 +13,7 @@ import CoreVideo
 #if canImport(CoreMedia)
 import CoreMedia
 #endif
+
 
 /// A highly-optimized, thread-safe (`Sendable`) barcode scanner leveraging zxing-cpp.
 /// Reuses the underlying C++ decoding reader across scans for maximum throughput.
@@ -127,10 +123,11 @@ public struct BarcodeScanner: Sendable {
     /// - Returns: An array of detected ``BarcodeResult``.
     /// - Throws: Scanning errors if decoding fails.
     public func readAsync(cgImage: CGImage, roi: CGRect? = nil) async throws -> [BarcodeResult] {
-        // CGImage is an immutable, thread-safe CF object. @preconcurrency import CoreGraphics
-        // above ensures this transfer is accepted across Swift 6.0–6.2 without a wrapper.
+        // CGImage is thread-safe for reading; wrap in @unchecked Sendable struct for Swift 6.0 compatibility.
+        struct Wrapper: @unchecked Sendable { let value: CGImage }
+        let box = Wrapper(value: cgImage)
         return try await Task.detached(priority: .userInitiated) {
-            try self.read(cgImage: cgImage, roi: roi)
+            try self.read(cgImage: box.value, roi: roi)
         }.value
     }
 
@@ -142,10 +139,11 @@ public struct BarcodeScanner: Sendable {
     /// - Returns: An array of detected ``BarcodeResult``.
     /// - Throws: Scanning errors if decoding fails.
     public func readAsync(ciImage: CIImage, roi: CGRect? = nil) async throws -> [BarcodeResult] {
-        // CIImage is an immutable, lazy-evaluated Core Image graph. @preconcurrency import
-        // CoreImage above handles the Swift 6.0 sending diagnostic cleanly.
+        // CIImage is thread-safe for reading; wrap in @unchecked Sendable struct for Swift 6.0 compatibility.
+        struct Wrapper: @unchecked Sendable { let value: CIImage }
+        let box = Wrapper(value: ciImage)
         return try await Task.detached(priority: .userInitiated) {
-            try self.read(ciImage: ciImage, roi: roi)
+            try self.read(ciImage: box.value, roi: roi)
         }.value
     }
     #endif
