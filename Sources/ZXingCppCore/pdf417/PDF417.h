@@ -34,6 +34,9 @@ struct CodewordPattern
 	int codeword  : 11 = 0;    // 11 is enough for [-1..929)
 	unsigned bits : 7 * 3 = 0; // 6/7 slots of 3 bits each for the normalized e2e pattern
 
+	constexpr CodewordPattern() = default;
+	constexpr CodewordPattern(int cw, unsigned b) : codeword(cw), bits(b) {}
+
 	constexpr bool operator<(const CodewordPattern& other) const noexcept { return bits < other.bits; }
 	constexpr int pattern(int i) const noexcept { return (bits >> ((6 - i - 1) * 3)) & 0b111; }
 	constexpr int cluster() const noexcept { return (pattern(0) - pattern(1) + pattern(4) - pattern(5) + 9) % 9; }
