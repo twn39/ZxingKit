@@ -3,7 +3,7 @@ import CoreGraphics
 import ZXingCpp
 
 /// Represents the quadrilateral corner positions of a detected barcode in image pixel space.
-public struct Position: Sendable {
+public struct Position: Sendable, Equatable, Codable {
     /// Top-left corner point.
     public let topLeft: CGPoint
     /// Top-right corner point.
@@ -35,7 +35,7 @@ public struct Position: Sendable {
 }
 
 /// Contains parsed GS1 Global Trade Item Number (GTIN) metadata for UPC/EAN barcodes.
-public struct GTIN: Sendable {
+public struct GTIN: Sendable, Equatable, Codable {
     /// Country or issuing organization name.
     public let country: String
     /// EAN-2 or EAN-5 add-on payload.
@@ -47,7 +47,7 @@ public struct GTIN: Sendable {
 }
 
 /// Contains all decoded metadata for a detected barcode.
-public struct BarcodeResult: Sendable {
+public struct BarcodeResult: Sendable, Equatable, Codable {
     /// The decoded text content of the barcode.
     public let text: String
     /// The raw byte payload of the barcode.
@@ -80,13 +80,16 @@ public struct BarcodeResult: Sendable {
         self.bytes = zxiResult.bytes
         self.format = BarcodeFormat(zxiFormat: zxiResult.format)
 
+        // Issue #2: Use the C++ position.isValid() flag exposed via hasValidPosition.
+        // This is semantically accurate — e.g., valid 1D scan-line endpoints are non-zero
+        // even if the barcode sits at the image origin.
         let pos = zxiResult.position
-        self.position = Position(
+        self.position = zxiResult.hasValidPosition ? Position(
             topLeft: CGPoint(x: CGFloat(pos.topLeft.x), y: CGFloat(pos.topLeft.y)),
             topRight: CGPoint(x: CGFloat(pos.topRight.x), y: CGFloat(pos.topRight.y)),
             bottomRight: CGPoint(x: CGFloat(pos.bottomRight.x), y: CGFloat(pos.bottomRight.y)),
             bottomLeft: CGPoint(x: CGFloat(pos.bottomLeft.x), y: CGFloat(pos.bottomLeft.y))
-        )
+        ) : nil
 
         self.orientation = zxiResult.orientation
         self.ecLevel = zxiResult.ecLevel
@@ -97,7 +100,11 @@ public struct BarcodeResult: Sendable {
         self.readerInit = zxiResult.readerInit
         self.lineCount = zxiResult.lineCount
 
-        let g = zxiResult.gtin
-        self.gtin = GTIN(country: g.country, addOn: g.addOn, price: g.price, issueNumber: g.issueNumber)
+        // Issue #3: gtin is now nullable in the ObjC bridge; nil for non-EAN/UPC formats.
+        if let g = zxiResult.gtin {
+            self.gtin = GTIN(country: g.country, addOn: g.addOn, price: g.price, issueNumber: g.issueNumber)
+        } else {
+            self.gtin = nil
+        }
     }
 }

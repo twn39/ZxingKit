@@ -33,7 +33,7 @@ public struct BarcodeScanner: Sendable {
     ///   - formats: Set of ``BarcodeFormat`` to filter during decoding (defaults to `[.any]`).
     ///   - tryHarder: Enables deeper analysis for blurry or degraded barcodes.
     ///   - maxNumberOfSymbols: Maximum number of barcodes to detect per image.
-    public init(formats: Set<BarcodeFormat> = [.any], tryHarder: Bool = false, maxNumberOfSymbols: Int = 255) {
+    public init(formats: Set<BarcodeFormat> = [.any], tryHarder: Bool = true, maxNumberOfSymbols: Int = 255) {
         var opts = ScannerOptions()
         opts.formats = formats
         opts.tryHarder = tryHarder
@@ -58,6 +58,10 @@ public struct BarcodeScanner: Sendable {
         zxiOptions.returnErrors = options.returnErrors
         zxiOptions.eanAddOnSymbol = ZXIEanAddOnSymbol(rawValue: options.eanAddOnSymbol.rawValue) ?? .ignore
         zxiOptions.textMode = ZXITextMode(rawValue: options.textMode.rawValue) ?? .HRI
+        // Issue #1: Previously missing options — now correctly bridged
+        zxiOptions.tryCode39ExtendedMode = options.tryCode39ExtendedMode
+        zxiOptions.validateCode39CheckSum = options.validateCode39CheckSum
+        zxiOptions.validateITFCheckSum = options.validateITFCheckSum
         return ZXIBarcodeReader(options: zxiOptions)
     }
 
@@ -118,12 +122,9 @@ public struct BarcodeScanner: Sendable {
     /// - Returns: An array of detected ``BarcodeResult``.
     /// - Throws: Scanning errors if decoding fails.
     public func readAsync(cgImage: CGImage, roi: CGRect? = nil) async throws -> [BarcodeResult] {
-        struct SendableCGImage: @unchecked Sendable {
-            let image: CGImage
-        }
-        let wrapped = SendableCGImage(image: cgImage)
+        // CGImage is @unchecked Sendable in Apple SDK; no wrapper needed in Swift 6.
         return try await Task.detached(priority: .userInitiated) {
-            try self.read(cgImage: wrapped.image, roi: roi)
+            try self.read(cgImage: cgImage, roi: roi)
         }.value
     }
 
@@ -135,12 +136,9 @@ public struct BarcodeScanner: Sendable {
     /// - Returns: An array of detected ``BarcodeResult``.
     /// - Throws: Scanning errors if decoding fails.
     public func readAsync(ciImage: CIImage, roi: CGRect? = nil) async throws -> [BarcodeResult] {
-        struct SendableCIImage: @unchecked Sendable {
-            let image: CIImage
-        }
-        let wrapped = SendableCIImage(image: ciImage)
+        // CIImage is @unchecked Sendable in Apple SDK.
         return try await Task.detached(priority: .userInitiated) {
-            try self.read(ciImage: wrapped.image, roi: roi)
+            try self.read(ciImage: ciImage, roi: roi)
         }.value
     }
     #endif
@@ -153,12 +151,11 @@ public struct BarcodeScanner: Sendable {
     /// - Returns: An array of detected ``BarcodeResult``.
     /// - Throws: Scanning errors if decoding fails.
     public func readAsync(pixelBuffer: CVPixelBuffer, roi: CGRect? = nil) async throws -> [BarcodeResult] {
-        struct SendablePixelBuffer: @unchecked Sendable {
-            let buffer: CVPixelBuffer
-        }
-        let wrapped = SendablePixelBuffer(buffer: pixelBuffer)
+        // CVPixelBuffer is a CF/ObjC type without Sendable conformance in Swift 6 — wrap it.
+        struct Wrapper: @unchecked Sendable { let value: CVPixelBuffer }
+        let box = Wrapper(value: pixelBuffer)
         return try await Task.detached(priority: .userInitiated) {
-            try self.read(pixelBuffer: wrapped.buffer, roi: roi)
+            try self.read(pixelBuffer: box.value, roi: roi)
         }.value
     }
     #endif
@@ -171,13 +168,13 @@ public struct BarcodeScanner: Sendable {
     /// - Returns: An array of detected ``BarcodeResult``.
     /// - Throws: Scanning errors if decoding fails.
     public func readAsync(sampleBuffer: CMSampleBuffer, roi: CGRect? = nil) async throws -> [BarcodeResult] {
-        struct SendableSampleBuffer: @unchecked Sendable {
-            let buffer: CMSampleBuffer
-        }
-        let wrapped = SendableSampleBuffer(buffer: sampleBuffer)
+        // CMSampleBuffer is a CF/ObjC type without Sendable conformance in Swift 6 — wrap it.
+        struct Wrapper: @unchecked Sendable { let value: CMSampleBuffer }
+        let box = Wrapper(value: sampleBuffer)
         return try await Task.detached(priority: .userInitiated) {
-            try self.read(sampleBuffer: wrapped.buffer, roi: roi)
+            try self.read(sampleBuffer: box.value, roi: roi)
         }.value
     }
     #endif
 }
+

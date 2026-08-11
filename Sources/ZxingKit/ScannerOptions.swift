@@ -44,5 +44,14 @@ public struct ScannerOptions: Sendable {
     /// Character set / encoding to use. Defaults to `.hri`.
     public var textMode: TextMode = .hri
 
+    /// Enables Code 39 Extended Mode (decodes full ASCII 128 character set). Defaults to `false`.
+    public var tryCode39ExtendedMode: Bool = false
+
+    /// Validates Code 39 checksum digit if present. Defaults to `false`.
+    public var validateCode39CheckSum: Bool = false
+
+    /// Validates ITF (Interleaved 2 of 5) checksum. Defaults to `false`.
+    public var validateITFCheckSum: Bool = false
+
     public init() {}
 }

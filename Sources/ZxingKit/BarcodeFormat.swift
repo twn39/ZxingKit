@@ -2,7 +2,7 @@ import Foundation
 import ZXingCpp
 
 /// Specifies the supported 1D linear and 2D matrix barcode symbologies.
-public enum BarcodeFormat: Int, CaseIterable, Hashable, Sendable {
+public enum BarcodeFormat: Int, CaseIterable, Hashable, Sendable, Codable {
     /// No barcode format specified or unrecognized format.
     case none = 0
     /// Aztec 2D matrix code.
@@ -105,4 +105,20 @@ public enum TextMode: Int, Sendable {
     case hex
     /// Hexadecimal representation with ECI markers.
     case hexEci
+}
+
+// MARK: - CaseIterable
+// Issue #7: These were previously only in the test target; moved here so
+// framework users can also enumerate all cases.
+
+extension Binarizer: CaseIterable {
+    public static let allCases: [Binarizer] = [.localAverage, .globalHistogram, .fixedThreshold, .boolCast]
+}
+
+extension EanAddOnSymbol: CaseIterable {
+    public static let allCases: [EanAddOnSymbol] = [.ignore, .read, .require]
+}
+
+extension TextMode: CaseIterable {
+    public static let allCases: [TextMode] = [.plain, .eci, .hri, .escaped, .hex, .hexEci]
 }

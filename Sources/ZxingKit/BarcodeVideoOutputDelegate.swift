@@ -13,24 +13,25 @@ public final class BarcodeVideoOutputDelegate: NSObject, AVCaptureVideoDataOutpu
     /// The underlying camera frame scanner.
     public let frameScanner: CameraFrameScanner
 
-    private let state = LockProtectedState()
+    // Issue #5: Replace LockProtectedState + two OS-specific classes with AdaptiveLock<VideoDelegateState>.
+    private let state: AdaptiveLock<VideoDelegateState>
 
     /// Optional Region of Interest (ROI) bounding box (normalized `0.0...1.0` or pixel coordinates).
     public var roi: CGRect? {
-        get { state.getRoi() }
-        set { state.setRoi(newValue) }
+        get { state.withLock { $0.roi } }
+        set { state.withLock { $0.roi = newValue } }
     }
 
     /// Closure callback invoked when non-empty barcode results are detected.
     public var onResults: (@Sendable ([BarcodeResult]) -> Void)? {
-        get { state.getOnResults() }
-        set { state.setOnResults(newValue) }
+        get { state.withLock { $0.onResults } }
+        set { state.withLock { $0.onResults = newValue } }
     }
 
     /// Closure callback invoked if scanning encounters an error.
     public var onError: (@Sendable (Error) -> Void)? {
-        get { state.getOnError() }
-        set { state.setOnError(newValue) }
+        get { state.withLock { $0.onError } }
+        set { state.withLock { $0.onError = newValue } }
     }
 
     /// An `AsyncStream` emitting detected barcode results asynchronously.
@@ -43,16 +44,29 @@ public final class BarcodeVideoOutputDelegate: NSObject, AVCaptureVideoDataOutpu
     ///   - roi: Optional Region of Interest (ROI) rectangle.
     public init(scanner: BarcodeScanner = BarcodeScanner(), roi: CGRect? = nil) {
         self.frameScanner = CameraFrameScanner(scanner: scanner)
+        self.state = AdaptiveLock(initialState: VideoDelegateState())
         let (stream, continuation) = AsyncStream.makeStream(of: [BarcodeResult].self)
         self.resultsStream = stream
         self.streamContinuation = continuation
         super.init()
         self.roi = roi
+        // Issue #9: Register onTermination so that if the consumer exits for-await,
+        // the stream is properly finished and does not suspend indefinitely.
+        // Note: AsyncStream.Continuation is a struct (value type); [weak] is invalid.
+        continuation.onTermination = { _ in
+            continuation.finish()
+        }
+    }
+
+    // Issue #9: deinit as second safety net — fires when the delegate is released
+    // (e.g. ViewController pop) even if no Task was consuming the stream.
+    deinit {
+        streamContinuation.finish()
     }
 
     /// Handles incoming camera sample buffers from AVFoundation.
     public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        let (currentRoi, onResults, onError) = state.snapshot()
+        let (currentRoi, onResults, onError) = state.withLock { ($0.roi, $0.onResults, $0.onError) }
         frameScanner.processFrame(sampleBuffer, roi: currentRoi) { [weak self] result in
             guard let self = self else { return }
             switch result {
@@ -68,112 +82,11 @@ public final class BarcodeVideoOutputDelegate: NSObject, AVCaptureVideoDataOutpu
     }
 }
 
+// MARK: - Supporting Types
+
 struct VideoDelegateState {
     var roi: CGRect?
     var onResults: (@Sendable ([BarcodeResult]) -> Void)?
     var onError: (@Sendable (Error) -> Void)?
-}
-
-final class LockProtectedState: Sendable {
-    private let impl: any LockProtectedStateImpl
-
-    init() {
-        if #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) {
-            self.impl = OSUnfairLockState()
-        } else {
-            self.impl = NSLockState()
-        }
-    }
-
-    func snapshot() -> (roi: CGRect?, onResults: (@Sendable ([BarcodeResult]) -> Void)?, onError: (@Sendable (Error) -> Void)?) {
-        impl.snapshot()
-    }
-
-    func getRoi() -> CGRect? { impl.getRoi() }
-    func setRoi(_ roi: CGRect?) { impl.setRoi(roi) }
-
-    func getOnResults() -> (@Sendable ([BarcodeResult]) -> Void)? { impl.getOnResults() }
-    func setOnResults(_ callback: (@Sendable ([BarcodeResult]) -> Void)?) { impl.setOnResults(callback) }
-
-    func getOnError() -> (@Sendable (Error) -> Void)? { impl.getOnError() }
-    func setOnError(_ callback: (@Sendable (Error) -> Void)?) { impl.setOnError(callback) }
-}
-
-protocol LockProtectedStateImpl: Sendable {
-    func snapshot() -> (roi: CGRect?, onResults: (@Sendable ([BarcodeResult]) -> Void)?, onError: (@Sendable (Error) -> Void)?)
-    func getRoi() -> CGRect?
-    func setRoi(_ roi: CGRect?)
-    func getOnResults() -> (@Sendable ([BarcodeResult]) -> Void)?
-    func setOnResults(_ callback: (@Sendable ([BarcodeResult]) -> Void)?)
-    func getOnError() -> (@Sendable (Error) -> Void)?
-    func setOnError(_ callback: (@Sendable (Error) -> Void)?)
-}
-
-@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
-final class OSUnfairLockState: LockProtectedStateImpl {
-    private let lock = OSAllocatedUnfairLock(initialState: VideoDelegateState())
-
-    func snapshot() -> (roi: CGRect?, onResults: (@Sendable ([BarcodeResult]) -> Void)?, onError: (@Sendable (Error) -> Void)?) {
-        lock.withLock { ($0.roi, $0.onResults, $0.onError) }
-    }
-
-    func getRoi() -> CGRect? { lock.withLock { $0.roi } }
-    func setRoi(_ roi: CGRect?) { lock.withLock { $0.roi = roi } }
-
-    func getOnResults() -> (@Sendable ([BarcodeResult]) -> Void)? { lock.withLock { $0.onResults } }
-    func setOnResults(_ callback: (@Sendable ([BarcodeResult]) -> Void)?) { lock.withLock { $0.onResults = callback } }
-
-    func getOnError() -> (@Sendable (Error) -> Void)? { lock.withLock { $0.onError } }
-    func setOnError(_ callback: (@Sendable (Error) -> Void)?) { lock.withLock { $0.onError = callback } }
-}
-
-final class NSLockState: LockProtectedStateImpl {
-    private let lock = NSLock()
-    private final class Storage: @unchecked Sendable {
-        var state = VideoDelegateState()
-    }
-    private let storage = Storage()
-
-    func snapshot() -> (roi: CGRect?, onResults: (@Sendable ([BarcodeResult]) -> Void)?, onError: (@Sendable (Error) -> Void)?) {
-        lock.lock()
-        defer { lock.unlock() }
-        return (storage.state.roi, storage.state.onResults, storage.state.onError)
-    }
-
-    func getRoi() -> CGRect? {
-        lock.lock()
-        defer { lock.unlock() }
-        return storage.state.roi
-    }
-
-    func setRoi(_ roi: CGRect?) {
-        lock.lock()
-        storage.state.roi = roi
-        lock.unlock()
-    }
-
-    func getOnResults() -> (@Sendable ([BarcodeResult]) -> Void)? {
-        lock.lock()
-        defer { lock.unlock() }
-        return storage.state.onResults
-    }
-
-    func setOnResults(_ callback: (@Sendable ([BarcodeResult]) -> Void)?) {
-        lock.lock()
-        storage.state.onResults = callback
-        lock.unlock()
-    }
-
-    func getOnError() -> (@Sendable (Error) -> Void)? {
-        lock.lock()
-        defer { lock.unlock() }
-        return storage.state.onError
-    }
-
-    func setOnError(_ callback: (@Sendable (Error) -> Void)?) {
-        lock.lock()
-        storage.state.onError = callback
-        lock.unlock()
-    }
 }
 #endif

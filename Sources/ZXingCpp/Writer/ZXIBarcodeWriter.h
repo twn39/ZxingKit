@@ -11,6 +11,10 @@ NS_SWIFT_SENDABLE
 @interface ZXIBarcodeWriter : NSObject
 @property(nonatomic, strong) ZXIWriterOptions *options;
 
+/// Use `initWithOptions:` instead. Calling bare `init` leaves `options` unset.
+- (instancetype)init NS_UNAVAILABLE;
++ (instancetype)new NS_UNAVAILABLE;
+
 -(instancetype)initWithOptions:(ZXIWriterOptions*)options;
 
 -(nullable CGImageRef)writeString:(NSString *)contents

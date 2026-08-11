@@ -23,7 +23,10 @@ NS_SWIFT_SENDABLE
 @property(nonatomic, strong) NSString *sequenceId;
 @property(nonatomic) BOOL readerInit;
 @property(nonatomic) NSInteger lineCount;
-@property(nonatomic, strong) ZXIGTIN *gtin;
+/// GTIN metadata for EAN/UPC barcodes; nil for all other formats.
+@property(nonatomic, nullable, strong) ZXIGTIN *gtin;
+/// Indicates whether the position data returned by zxing-cpp is valid.
+@property(nonatomic) BOOL hasValidPosition;
 
 - (instancetype)init:(NSString *)text
               format:(ZXIFormat)format
@@ -37,7 +40,8 @@ NS_SWIFT_SENDABLE
           sequenceId:(NSString *)sequenceId
           readerInit:(BOOL)readerInit
            lineCount:(NSInteger)lineCount
-                gtin:(ZXIGTIN *)gtin;
+                gtin:(nullable ZXIGTIN *)gtin
+    hasValidPosition:(BOOL)hasValidPosition;
 @end
 
 NS_ASSUME_NONNULL_END

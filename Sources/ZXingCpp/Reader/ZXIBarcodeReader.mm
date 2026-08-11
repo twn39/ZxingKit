@@ -14,8 +14,19 @@
 
 using namespace ZXing;
 
+// Issue #6: Use Latin-1 fallback for non-UTF-8 content (binary payloads, legacy EAN encodings).
+// Returning nil from NSString initWithBytes would crash the Swift bridge (non-optional String).
 NSString *stringToNSString(const std::string &text) {
-    return [[NSString alloc]initWithBytes:text.data() length:text.size() encoding:NSUTF8StringEncoding];
+    if (text.empty()) { return @""; }
+    NSString *s = [[NSString alloc] initWithBytes:text.data()
+                                           length:text.size()
+                                         encoding:NSUTF8StringEncoding];
+    if (!s) {
+        s = [[NSString alloc] initWithBytes:text.data()
+                                     length:text.size()
+                                   encoding:NSISOLatin1StringEncoding];
+    }
+    return s ?: @"";
 }
 
 ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
@@ -37,6 +48,35 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
     } catch (...) {
         return nullptr;
     }
+}
+
+// Issue #8: Shared ROI pixel resolution — eliminates duplicated normalised/pixel coordinate logic.
+struct ZXIPixelROI { int left, top, width, height; };
+
+static ZXIPixelROI resolvePixelROI(CGRect cropRect, int fullWidth, int fullHeight) {
+    ZXIPixelROI roi = {0, 0, fullWidth, fullHeight};
+    if (CGRectIsEmpty(cropRect) || cropRect.size.width <= 0 || cropRect.size.height <= 0) {
+        return roi;
+    }
+    // Detect normalised coordinates (all values in [0,1])
+    if (cropRect.origin.x >= 0 && cropRect.origin.x <= 1.0 &&
+        cropRect.origin.y >= 0 && cropRect.origin.y <= 1.0 &&
+        cropRect.size.width <= 1.0 && cropRect.size.height <= 1.0) {
+        roi.left   = static_cast<int>(cropRect.origin.x   * fullWidth);
+        roi.top    = static_cast<int>(cropRect.origin.y   * fullHeight);
+        roi.width  = static_cast<int>(cropRect.size.width  * fullWidth);
+        roi.height = static_cast<int>(cropRect.size.height * fullHeight);
+    } else {
+        roi.left   = static_cast<int>(cropRect.origin.x);
+        roi.top    = static_cast<int>(cropRect.origin.y);
+        roi.width  = static_cast<int>(cropRect.size.width);
+        roi.height = static_cast<int>(cropRect.size.height);
+    }
+    roi.left  = std::min(roi.left,  fullWidth  - 1);
+    roi.top   = std::min(roi.top,   fullHeight - 1);
+    roi.width = std::min(roi.width,  fullWidth  - roi.left);
+    roi.height= std::min(roi.height, fullHeight - roi.top);
+    return roi;
 }
 
 @interface ZXIReaderOptions()
@@ -253,31 +293,13 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
         return @[];
     }
 
-    size_t left = 0, top = 0, targetWidth = fullCols, targetHeight = fullRows;
-    BOOL isCropped = NO;
-
-    if (!CGRectIsEmpty(cropRect) && cropRect.size.width > 0 && cropRect.size.height > 0) {
-        if (cropRect.origin.x >= 0 && cropRect.origin.x <= 1.0 &&
-            cropRect.origin.y >= 0 && cropRect.origin.y <= 1.0 &&
-            cropRect.size.width <= 1.0 && cropRect.size.height <= 1.0) {
-            left = static_cast<size_t>(cropRect.origin.x * fullCols);
-            top = static_cast<size_t>(cropRect.origin.y * fullRows);
-            targetWidth = static_cast<size_t>(cropRect.size.width * fullCols);
-            targetHeight = static_cast<size_t>(cropRect.size.height * fullRows);
-        } else {
-            left = static_cast<size_t>(cropRect.origin.x);
-            top = static_cast<size_t>(cropRect.origin.y);
-            targetWidth = static_cast<size_t>(cropRect.size.width);
-            targetHeight = static_cast<size_t>(cropRect.size.height);
-        }
-        left = std::min(left, fullCols - 1);
-        top = std::min(top, fullRows - 1);
-        targetWidth = std::min(targetWidth, fullCols - left);
-        targetHeight = std::min(targetHeight, fullRows - top);
-        if (targetWidth < fullCols || targetHeight < fullRows) {
-            isCropped = YES;
-        }
-    }
+    // Issue #8: Use shared resolvePixelROI — eliminates the second copy of the normalised/pixel logic.
+    ZXIPixelROI roi = resolvePixelROI(cropRect, static_cast<int>(fullCols), static_cast<int>(fullRows));
+    size_t left = static_cast<size_t>(roi.left);
+    size_t top = static_cast<size_t>(roi.top);
+    size_t targetWidth = static_cast<size_t>(roi.width);
+    size_t targetHeight = static_cast<size_t>(roi.height);
+    BOOL isCropped = (targetWidth < fullCols || targetHeight < fullRows);
 
     std::vector<uint8_t> data(targetWidth * targetHeight);
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceGray();
@@ -313,29 +335,25 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
     try {
         ImageView targetView = imageView;
         if (!CGRectIsEmpty(cropRect) && cropRect.size.width > 0 && cropRect.size.height > 0) {
-            int left = 0, top = 0, width = imageView.width(), height = imageView.height();
-            if (cropRect.origin.x >= 0 && cropRect.origin.x <= 1.0 &&
-                cropRect.origin.y >= 0 && cropRect.origin.y <= 1.0 &&
-                cropRect.size.width <= 1.0 && cropRect.size.height <= 1.0) {
-                left = static_cast<int>(cropRect.origin.x * imageView.width());
-                top = static_cast<int>(cropRect.origin.y * imageView.height());
-                width = static_cast<int>(cropRect.size.width * imageView.width());
-                height = static_cast<int>(cropRect.size.height * imageView.height());
-            } else {
-                left = static_cast<int>(cropRect.origin.x);
-                top = static_cast<int>(cropRect.origin.y);
-                width = static_cast<int>(cropRect.size.width);
-                height = static_cast<int>(cropRect.size.height);
-            }
-            targetView = imageView.cropped(left, top, width, height);
+            // Issue #8: Use shared resolvePixelROI to avoid duplicated coordinate logic.
+            ZXIPixelROI roi = resolvePixelROI(cropRect, imageView.width(), imageView.height());
+            targetView = imageView.cropped(roi.left, roi.top, roi.width, roi.height);
         }
         Barcodes results = ReadBarcodes(targetView, self.options.cppOpts);
         NSMutableArray* zxiResults = [NSMutableArray array];
         for (auto result: results) {
+            // Issue #2: ZXing::Position (QuadrilateralI) has no isValid().
+            // For any real detection, at least one corner will be non-zero.
+            // Only generated/synthesized results with no detection may yield all-zero coordinates.
+            auto& pos = result.position();
+            BOOL hasValidPos = pos.topLeft().x != 0 || pos.topLeft().y != 0 ||
+                               pos.topRight().x != 0 || pos.topRight().y != 0 ||
+                               pos.bottomRight().x != 0 || pos.bottomRight().y != 0 ||
+                               pos.bottomLeft().x != 0 || pos.bottomLeft().y != 0;
             [zxiResults addObject:
              [[ZXIResult alloc] init:stringToNSString(result.text())
                               format:ZXIFormatFromBarcodeFormat(result.format())
-                              bytes:[[NSData alloc] initWithBytes:result.bytes().data() length:result.bytes().size()]
+                               bytes:[[NSData alloc] initWithBytes:result.bytes().data() length:result.bytes().size()]
                             position:[[ZXIPosition alloc]initWithPosition: result.position()]
                          orientation:result.orientation()
                              ecLevel:stringToNSString(result.ecLevel())
@@ -345,7 +363,8 @@ ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
                           sequenceId:stringToNSString(result.sequenceId())
                           readerInit:result.readerInit()
                            lineCount:result.lineCount()
-                                gtin:getGTIN(result)]
+                                gtin:getGTIN(result)
+                    hasValidPosition:hasValidPos]
              ];
         }
         return zxiResults;

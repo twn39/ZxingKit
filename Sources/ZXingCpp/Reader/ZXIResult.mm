@@ -17,7 +17,8 @@
           sequenceId:(NSString *)sequenceId
           readerInit:(BOOL)readerInit
            lineCount:(NSInteger)lineCount
-                gtin:(ZXIGTIN *)gtin {
+                gtin:(nullable ZXIGTIN *)gtin
+    hasValidPosition:(BOOL)hasValidPosition {
     self = [super init];
     self.text = text;
     self.format = format;
@@ -32,6 +33,8 @@
     self.readerInit = readerInit;
     self.lineCount = lineCount;
     self.gtin = gtin;
+    self.hasValidPosition = hasValidPosition;
     return self;
 }
 @end
+
