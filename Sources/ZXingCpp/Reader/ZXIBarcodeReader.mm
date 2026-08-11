@@ -10,6 +10,7 @@
 #import "ZXIFormatHelper.h"
 #import "ZXIPosition+Helper.h"
 #import "ZXIErrors.h"
+#import <algorithm>
 
 using namespace ZXing;
 
@@ -18,6 +19,12 @@ NSString *stringToNSString(const std::string &text) {
 }
 
 ZXIGTIN *getGTIN(const Barcode &barcode) {
+    // Only attempt GTIN parsing for EAN/UPC barcode formats to avoid C++ exception overhead
+    auto f = barcode.format();
+    if (f != BarcodeFormat::EAN13 && f != BarcodeFormat::EAN8 &&
+        f != BarcodeFormat::UPCA && f != BarcodeFormat::UPCE) {
+        return nullptr;
+    }
     try {
         auto country = GTIN::LookupCountryIdentifier(barcode.text(TextMode::Plain), barcode.format());
         auto addOn = GTIN::EanAddOn(barcode);
@@ -27,9 +34,7 @@ ZXIGTIN *getGTIN(const Barcode &barcode) {
                                         addOn:stringToNSString(addOn)
                                         price:stringToNSString(GTIN::Price(addOn))
                                   issueNumber:stringToNSString(GTIN::IssueNr(addOn))];
-    } catch (std::exception e) {
-        // Because invalid GTIN data can lead to exceptions, in which case
-        // we don't want to discard the whole result.
+    } catch (...) {
         return nullptr;
     }
 }
@@ -48,11 +53,17 @@ ZXIGTIN *getGTIN(const Barcode &barcode) {
     return [self initWithOptions: [[ZXIReaderOptions alloc] init]];
 }
 
-- (instancetype)initWithOptions:(ZXIReaderOptions*)options{
+- (instancetype)initWithOptions:(ZXIReaderOptions*)options {
     self = [super init];
-    self.ciContext = [[CIContext alloc] initWithOptions:@{kCIContextWorkingColorSpace: [NSNull new]}];
     self.options = options;
     return self;
+}
+
+- (CIContext *)ciContext {
+    if (!_ciContext) {
+        _ciContext = [[CIContext alloc] initWithOptions:@{kCIContextWorkingColorSpace: [NSNull new]}];
+    }
+    return _ciContext;
 }
 
 - (NSArray<ZXIResult *> *)readCVPixelBuffer:(nonnull CVPixelBufferRef)pixelBuffer
@@ -182,30 +193,64 @@ ZXIGTIN *getGTIN(const Barcode &barcode) {
 - (NSArray<ZXIResult *> *)readCGImage:(nonnull CGImageRef)image
                               cropRect:(CGRect)cropRect
                                  error:(NSError *__autoreleasing _Nullable *)error {
-    CGFloat cols = CGImageGetWidth(image);
-    CGFloat rows = CGImageGetHeight(image);
-    std::vector<uint8_t> data(cols * rows);
+    size_t fullCols = CGImageGetWidth(image);
+    size_t fullRows = CGImageGetHeight(image);
+    if (fullCols == 0 || fullRows == 0) {
+        return @[];
+    }
 
+    size_t left = 0, top = 0, targetWidth = fullCols, targetHeight = fullRows;
+    BOOL isCropped = NO;
+
+    if (!CGRectIsEmpty(cropRect) && cropRect.size.width > 0 && cropRect.size.height > 0) {
+        if (cropRect.origin.x >= 0 && cropRect.origin.x <= 1.0 &&
+            cropRect.origin.y >= 0 && cropRect.origin.y <= 1.0 &&
+            cropRect.size.width <= 1.0 && cropRect.size.height <= 1.0) {
+            left = static_cast<size_t>(cropRect.origin.x * fullCols);
+            top = static_cast<size_t>(cropRect.origin.y * fullRows);
+            targetWidth = static_cast<size_t>(cropRect.size.width * fullCols);
+            targetHeight = static_cast<size_t>(cropRect.size.height * fullRows);
+        } else {
+            left = static_cast<size_t>(cropRect.origin.x);
+            top = static_cast<size_t>(cropRect.origin.y);
+            targetWidth = static_cast<size_t>(cropRect.size.width);
+            targetHeight = static_cast<size_t>(cropRect.size.height);
+        }
+        left = std::min(left, fullCols - 1);
+        top = std::min(top, fullRows - 1);
+        targetWidth = std::min(targetWidth, fullCols - left);
+        targetHeight = std::min(targetHeight, fullRows - top);
+        if (targetWidth < fullCols || targetHeight < fullRows) {
+            isCropped = YES;
+        }
+    }
+
+    std::vector<uint8_t> data(targetWidth * targetHeight);
     CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceGenericGray);
     CGContextRef contextRef = CGBitmapContextCreate(data.data(),
-                                                    cols,
-                                                    rows,
+                                                    targetWidth,
+                                                    targetHeight,
                                                     8,
-                                                    cols,
+                                                    targetWidth,
                                                     colorSpace,
                                                     kCGBitmapByteOrderDefault);
     CGColorSpaceRelease(colorSpace);
     if (contextRef) {
-        CGContextDrawImage(contextRef, CGRectMake(0, 0, cols, rows), image);
+        if (isCropped) {
+            CGFloat drawY = -static_cast<CGFloat>(fullRows - top - targetHeight);
+            CGContextDrawImage(contextRef, CGRectMake(-static_cast<CGFloat>(left), drawY, static_cast<CGFloat>(fullCols), static_cast<CGFloat>(fullRows)), image);
+        } else {
+            CGContextDrawImage(contextRef, CGRectMake(0, 0, static_cast<CGFloat>(fullCols), static_cast<CGFloat>(fullRows)), image);
+        }
         CGContextRelease(contextRef);
     }
 
     ImageView imageView = ImageView(
               static_cast<const uint8_t *>(data.data()),
-              static_cast<int>(cols),
-              static_cast<int>(rows),
+              static_cast<int>(targetWidth),
+              static_cast<int>(targetHeight),
               ImageFormat::Lum);
-    return [self readImageView:imageView cropRect:cropRect error:error];
+    return [self readImageView:imageView cropRect:CGRectZero error:error];
 }
 
 - (NSArray<ZXIResult*> *)readImageView:(ImageView)imageView
@@ -236,7 +281,7 @@ ZXIGTIN *getGTIN(const Barcode &barcode) {
             [zxiResults addObject:
              [[ZXIResult alloc] init:stringToNSString(result.text())
                               format:ZXIFormatFromBarcodeFormat(result.format())
-                               bytes:[[NSData alloc] initWithBytes:result.bytes().data() length:result.bytes().size()]
+                              bytes:[[NSData alloc] initWithBytes:result.bytes().data() length:result.bytes().size()]
                             position:[[ZXIPosition alloc]initWithPosition: result.position()]
                          orientation:result.orientation()
                              ecLevel:stringToNSString(result.ecLevel())

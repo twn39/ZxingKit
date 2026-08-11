@@ -28,6 +28,7 @@ typedef NS_ENUM(NSInteger, ZXITextMode) {
     ZXITextModeHexECI
 };
 
+NS_SWIFT_SENDABLE
 @interface ZXIReaderOptions : NSObject
 @property(nonatomic, copy) NSArray<NSNumber*> *formats;
 @property(nonatomic) BOOL tryHarder;

@@ -8,6 +8,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+NS_SWIFT_SENDABLE
 @interface ZXIPosition : NSObject
 @property(nonatomic, nonnull)ZXIPoint *topLeft;
 @property(nonatomic, nonnull)ZXIPoint *topRight;

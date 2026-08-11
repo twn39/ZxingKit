@@ -383,13 +383,14 @@ struct ZxingKitTests {
     @Test("BarcodeVideoOutputDelegate error callback handling")
     func testBarcodeVideoOutputDelegateErrorHandling() throws {
         let videoDelegate = BarcodeVideoOutputDelegate()
-        var errorHandled = false
-        videoDelegate.onError = { error in
-            errorHandled = true
+        final class ErrorState: @unchecked Sendable { var handled = false }
+        let state = ErrorState()
+        videoDelegate.onError = { _ in
+            state.handled = true
         }
 
         #expect(videoDelegate.roi == nil)
-        #expect(!errorHandled)
+        #expect(!state.handled)
     }
 
     // MARK: - Performance Benchmarking Suite
@@ -447,6 +448,30 @@ struct ZxingKitTests {
         let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
         let fps = Double(frameCount) / seconds
         #expect(fps > 100.0, "Video frame scanning throughput should exceed 100 fps, actual: \(fps) fps")
+    }
+
+    @Test("Concurrency Sendable cross-actor safety verification")
+    func testSendableConcurrencySafety() async throws {
+        let scanner = BarcodeScanner(formats: [.qrCode])
+        let generator = BarcodeGenerator(format: .qrCode, width: 200, height: 200)
+
+        actor ScannerActor {
+            let scanner: BarcodeScanner
+            init(scanner: BarcodeScanner) { self.scanner = scanner }
+            func scan(image: CGImage) throws -> [BarcodeResult] {
+                try scanner.read(cgImage: image)
+            }
+        }
+
+        let cgImage = try #require(try generator.write(string: "Sendable Test"))
+        let actorInstance = ScannerActor(scanner: scanner)
+
+        async let task1 = actorInstance.scan(image: cgImage)
+        async let task2 = actorInstance.scan(image: cgImage)
+
+        let (res1, res2) = try await (task1, task2)
+        #expect(res1.count == 1)
+        #expect(res2.count == 1)
     }
 }
 

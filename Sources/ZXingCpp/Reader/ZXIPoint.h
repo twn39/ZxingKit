@@ -7,6 +7,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+NS_SWIFT_SENDABLE
 @interface ZXIPoint : NSObject
 @property(nonatomic) NSInteger x;
 @property(nonatomic) NSInteger y;

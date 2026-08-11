@@ -9,6 +9,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+NS_SWIFT_SENDABLE
 @interface ZXIResult : NSObject
 @property(nonatomic, strong) NSString *text;
 @property(nonatomic, strong) NSData *bytes;

@@ -11,6 +11,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+NS_SWIFT_SENDABLE
 @interface ZXIBarcodeReader : NSObject
 @property(nonatomic, strong) ZXIReaderOptions *options;
 

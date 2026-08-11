@@ -5,8 +5,6 @@ import CoreVideo
 import CoreMedia
 import ZXingCpp
 
-extension ZXIBarcodeReader: @retroactive @unchecked Sendable {}
-
 /// A highly-optimized barcode scanner leveraging zxing-cpp.
 /// This type is entirely thread-safe (`Sendable`) and reuses the underlying engine reader across scans.
 public struct BarcodeScanner: Sendable {

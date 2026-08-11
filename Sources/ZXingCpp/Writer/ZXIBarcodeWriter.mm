@@ -129,10 +129,21 @@ using namespace ZXing;
 -(CGImageRef)imageToCGImage:(const Image&)img {
     int realWidth = img.width();
     int realHeight = img.height();
+    size_t dataSize = static_cast<size_t>(img.rowStride() * realHeight);
+    if (realWidth <= 0 || realHeight <= 0 || dataSize == 0) {
+        return NULL;
+    }
 
-    NSData *resultAsNSData = [NSData dataWithBytes:img.data() length:img.rowStride() * realHeight];
+    void* buffer = malloc(dataSize);
+    if (!buffer) {
+        return NULL;
+    }
+    memcpy(buffer, img.data(), dataSize);
+
     CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceGenericGray);
-    CGDataProviderRef provider = CGDataProviderCreateWithCFData((CFDataRef)resultAsNSData);
+    CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, buffer, dataSize, [](void *info, const void *data, size_t size) {
+        free(const_cast<void*>(data));
+    });
 
     CGImageRef cgImg = CGImageCreate(realWidth,
                                      realHeight,

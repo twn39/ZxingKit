@@ -7,6 +7,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+NS_SWIFT_SENDABLE
 @interface ZXIGTIN : NSObject
 @property(nonatomic, nonnull)NSString *country;
 @property(nonatomic, nonnull)NSString *addOn;

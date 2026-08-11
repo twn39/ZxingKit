@@ -30,6 +30,7 @@ extern const int PDF417_ERROR_CORRECTION_6;
 extern const int PDF417_ERROR_CORRECTION_7;
 extern const int PDF417_ERROR_CORRECTION_8;
 
+NS_SWIFT_SENDABLE
 @interface ZXIWriterOptions : NSObject
 @property(nonatomic) ZXIFormat format;
 @property(nonatomic) int width;

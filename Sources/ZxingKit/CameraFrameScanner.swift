@@ -6,10 +6,10 @@ import os
 /// A high-performance, thread-safe camera frame scanner supporting backpressure frame-dropping.
 ///
 /// It ensures that only the latest video frame is processed while extra frames are dropped if the scanner is busy.
-public final class CameraFrameScanner: @unchecked Sendable {
+public final class CameraFrameScanner: Sendable {
     /// The underlying barcode scanner.
     public let scanner: BarcodeScanner
-    private let isProcessing = AtomicBool()
+    private let isProcessing = AtomicFlag()
 
     /// Initializes a new `CameraFrameScanner`.
     /// - Parameter scanner: The `BarcodeScanner` instance to use. Defaults to a default scanner.
@@ -24,7 +24,7 @@ public final class CameraFrameScanner: @unchecked Sendable {
     ///   - completion: Callback executed when scanning completes.
     /// - Returns: `true` if the frame was accepted for scanning; `false` if dropped due to backpressure.
     @discardableResult
-    public func processFrame(_ sampleBuffer: CMSampleBuffer, roi: CGRect? = nil, completion: @escaping (Result<[BarcodeResult], Error>) -> Void) -> Bool {
+    public func processFrame(_ sampleBuffer: CMSampleBuffer, roi: CGRect? = nil, completion: @escaping @Sendable (Result<[BarcodeResult], Error>) -> Void) -> Bool {
         guard isProcessing.tryLock() else {
             return false // Frame dropped due to backpressure
         }
@@ -56,21 +56,38 @@ public final class CameraFrameScanner: @unchecked Sendable {
     }
 }
 
-private final class AtomicBool: @unchecked Sendable {
-    private var lock = os_unfair_lock()
-    private var flag = false
+/// A thread-safe, non-blocking atomic flag for backpressure detection.
+private final class AtomicFlag: @unchecked Sendable {
+    private let lockPointer: UnsafeMutablePointer<os_unfair_lock_s>
+    private let statePointer: UnsafeMutablePointer<Bool>
+
+    init() {
+        let lock = UnsafeMutablePointer<os_unfair_lock_s>.allocate(capacity: 1)
+        lock.initialize(to: os_unfair_lock_s())
+        let state = UnsafeMutablePointer<Bool>.allocate(capacity: 1)
+        state.initialize(to: false)
+        self.lockPointer = lock
+        self.statePointer = state
+    }
+
+    deinit {
+        lockPointer.deallocate()
+        statePointer.deallocate()
+    }
 
     func tryLock() -> Bool {
-        os_unfair_lock_lock(&lock)
-        defer { os_unfair_lock_unlock(&lock) }
-        if flag { return false }
-        flag = true
+        os_unfair_lock_lock(lockPointer)
+        defer { os_unfair_lock_unlock(lockPointer) }
+        if statePointer.pointee {
+            return false
+        }
+        statePointer.pointee = true
         return true
     }
 
     func unlock() {
-        os_unfair_lock_lock(&lock)
-        flag = false
-        os_unfair_lock_unlock(&lock)
+        os_unfair_lock_lock(lockPointer)
+        statePointer.pointee = false
+        os_unfair_lock_unlock(lockPointer)
     }
 }
