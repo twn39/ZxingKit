@@ -691,13 +691,13 @@ struct ZxingKitTests {
 }
 
 extension Binarizer: CaseIterable {
-    public static var allCases: [Binarizer] = [.localAverage, .globalHistogram, .fixedThreshold, .boolCast]
+    public static let allCases: [Binarizer] = [.localAverage, .globalHistogram, .fixedThreshold, .boolCast]
 }
 
 extension EanAddOnSymbol: CaseIterable {
-    public static var allCases: [EanAddOnSymbol] = [.ignore, .read, .require]
+    public static let allCases: [EanAddOnSymbol] = [.ignore, .read, .require]
 }
 
 extension TextMode: CaseIterable {
-    public static var allCases: [TextMode] = [.plain, .eci, .hri, .escaped, .hex, .hexEci]
+    public static let allCases: [TextMode] = [.plain, .eci, .hri, .escaped, .hex, .hexEci]
 }

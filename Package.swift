@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
@@ -45,15 +45,13 @@ let package = Package(
         .target(
             name: "ZxingKit",
             dependencies: ["ZXingCpp"],
-            path: "Sources/ZxingKit",
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]
+            path: "Sources/ZxingKit"
         ),
         .testTarget(
             name: "ZxingKitTests",
             dependencies: ["ZxingKit"]
         )
     ],
+    swiftLanguageModes: [.v6],
     cxxLanguageStandard: .cxx20
 )

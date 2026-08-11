@@ -28,9 +28,9 @@ jobs:
             echo "SwiftLint not installed on runner, skipping lint check."
           fi
 
-      - name: Build Package (Strict Concurrency Complete)
+      - name: Build Package (Swift 6.0+)
         run: |
-          swift build -Xswiftc -strict-concurrency=complete
+          swift build
 
       - name: Run Unit Tests & Generate Coverage
         run: |
