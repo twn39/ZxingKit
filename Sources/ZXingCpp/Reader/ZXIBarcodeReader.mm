@@ -63,7 +63,7 @@ ZXIGTIN *getGTIN(const Barcode &barcode) {
     // but only the following ones seem to be supported on iOS.
     switch (pixelFormat) {
         case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
-        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
+        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: {
             NSInteger cols = CVPixelBufferGetWidth(pixelBuffer);
             NSInteger rows = CVPixelBufferGetHeight(pixelBuffer);
             NSInteger bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0);
@@ -79,6 +79,7 @@ ZXIGTIN *getGTIN(const Barcode &barcode) {
             NSArray* results = [self readImageView:imageView error:error];
             CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
             return results;
+        }
     }
 
     // If given pixel format is not a supported type with a luminance channel we just use the
@@ -89,6 +90,10 @@ ZXIGTIN *getGTIN(const Barcode &barcode) {
 - (NSArray<ZXIResult *> *)readCIImage:(nonnull CIImage *)image
                                 error:(NSError *__autoreleasing _Nullable *)error {
     CGImageRef cgImage = [self.ciContext createCGImage:image fromRect:image.extent];
+    if (!cgImage) {
+        SetNSError(error, ZXIReaderError, "Failed to create CGImage from CIImage");
+        return @[];
+    }
     auto results = [self readCGImage:cgImage error:error];
     CGImageRelease(cgImage);
     return results;

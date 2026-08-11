@@ -1,5 +1,6 @@
 import Testing
 import CoreGraphics
+import ZXingCpp
 @testable import ZxingKit
 
 @Suite("ZxingKit Integration Tests")
@@ -148,5 +149,51 @@ struct ZxingKitTests {
         #expect(throws: ZxingError.self) {
             _ = try generator.write(string: "INVALID_LETTERS")
         }
+        
+        let err = ZxingError.generationFailed("Test Failure")
+        #expect(err.errorDescription?.contains("Test Failure") == true)
+        #expect(ZxingError.unreadableImage.errorDescription != nil)
+    }
+
+    // MARK: - Upstream Sync & Defensive Tests
+
+    @Test("1-to-1 BarcodeFormat raw value mapping verification")
+    func testBarcodeFormat1To1Mapping() throws {
+        // 1. Ensure count matches expected 28 formats (0...27)
+        #expect(BarcodeFormat.allCases.count == 28)
+
+        // 2. Iterate through all cases and verify bidirectional mapping and exact raw values
+        for format in BarcodeFormat.allCases {
+            let zxiFormat = format.zxiFormat
+            #expect(zxiFormat.rawValue == format.rawValue, "Format \(format) rawValue \(format.rawValue) mismatch with ZXIFormat \(zxiFormat.rawValue)")
+            
+            let reverseFormat = BarcodeFormat(zxiFormat: zxiFormat)
+            #expect(reverseFormat == format, "Bidirectional conversion failed for format \(format)")
+        }
+    }
+
+    @Test("Defensive handling for invalid enum raw values")
+    func testDefensiveEnumMapping() throws {
+        // Test fallback to .none for unknown raw values
+        let invalidZXIFormat = ZXIFormat(rawValue: 9999) ?? .NONE
+        let fallbackFormat = BarcodeFormat(zxiFormat: invalidZXIFormat)
+        #expect(fallbackFormat == .none, "Unknown ZXIFormat rawValue should fall back to .none")
+    }
+
+    @Test("Async generation and CIImage scanning")
+    func testAsyncGeneratorAndCIImageScanner() async throws {
+        let textToEncode = "CIImage Async test"
+        let generator = BarcodeGenerator(format: .qrCode, width: 200, height: 200)
+
+        // Async write
+        let cgImage = try #require(try await generator.writeAsync(string: textToEncode))
+        let ciImage = CIImage(cgImage: cgImage)
+
+        // Async read from CIImage
+        let scanner = BarcodeScanner(formats: [.qrCode])
+        let results = try await scanner.readAsync(ciImage: ciImage)
+
+        #expect(results.count == 1)
+        #expect(results.first?.text == textToEncode)
     }
 }

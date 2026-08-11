@@ -132,6 +132,7 @@ using namespace ZXing;
 
     NSData *resultAsNSData = [NSData dataWithBytes:img.data() length:img.rowStride() * realHeight];
     CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceGenericGray);
+    CGDataProviderRef provider = CGDataProviderCreateWithCFData((CFDataRef)resultAsNSData);
 
     CGImageRef cgImg = CGImageCreate(realWidth,
                                      realHeight,
@@ -140,10 +141,11 @@ using namespace ZXing;
                                      img.rowStride(),
                                      colorSpace,
                                      kCGBitmapByteOrderDefault,
-                                     CGDataProviderCreateWithCFData((CFDataRef)resultAsNSData),
+                                     provider,
                                      NULL,
                                      YES,
                                      kCGRenderingIntentDefault);
+    CGDataProviderRelease(provider);
     CGColorSpaceRelease(colorSpace);
     return cgImg;
 }

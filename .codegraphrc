@@ -1,0 +1,14 @@
+{
+  "include": [
+    "Sources/ZxingKit",
+    "Sources/ZXingCpp",
+    "Tests"
+  ],
+  "exclude": [
+    "third_party",
+    "Sources/ZXingCppCore",
+    ".build"
+  ],
+  "output": ".codegraph",
+  "cache": true
+}
