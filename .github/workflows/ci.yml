@@ -1,0 +1,45 @@
+name: ZxingKit CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (macOS)
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Check Swift Version & Xcode Environment
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Run SwiftLint
+        run: |
+          if command -v swiftlint >/dev/null 2>&1; then
+            swiftlint lint
+          else
+            echo "SwiftLint not installed on runner, skipping lint check."
+          fi
+
+      - name: Build Package (Strict Concurrency Complete)
+        run: |
+          swift build -Xswiftc -strict-concurrency=complete
+
+      - name: Run Unit Tests & Generate Coverage
+        run: |
+          chmod +x ./scripts/coverage.sh
+          ./scripts/coverage.sh --html
+
+      - name: Upload Code Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-report
+          path: .build/codecov/html/
+          if-no-files-found: ignore
