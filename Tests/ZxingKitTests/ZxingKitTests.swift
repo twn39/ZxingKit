@@ -1,10 +1,45 @@
 import Testing
 import CoreGraphics
+import CoreVideo
 import ZXingCpp
 @testable import ZxingKit
 
 @Suite("ZxingKit Integration Tests")
 struct ZxingKitTests {
+
+    private func makePixelBuffer(from cgImage: CGImage) -> CVPixelBuffer? {
+        let width = cgImage.width
+        let height = cgImage.height
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32ARGB,
+            nil,
+            &pixelBuffer
+        )
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else { return nil }
+
+        CVPixelBufferLockBaseAddress(buffer, CVPixelBufferLockFlags(rawValue: 0))
+        let pixelData = CVPixelBufferGetBaseAddress(buffer)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: pixelData,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+        ) else {
+            CVPixelBufferUnlockBaseAddress(buffer, CVPixelBufferLockFlags(rawValue: 0))
+            return nil
+        }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
+        CVPixelBufferUnlockBaseAddress(buffer, CVPixelBufferLockFlags(rawValue: 0))
+        return buffer
+    }
 
     @Test("Generate and scan a QR Code")
     func testGenerateAndScanQRCode() throws {
@@ -195,5 +230,29 @@ struct ZxingKitTests {
 
         #expect(results.count == 1)
         #expect(results.first?.text == textToEncode)
+    }
+
+    @Test("Binary Data writing and CVPixelBuffer scanning")
+    func testDataWritingAndPixelBufferScanning() async throws {
+        let rawData = Data("ZxingKit PixelBuffer Test".utf8)
+        let generator = BarcodeGenerator(format: .qrCode, width: 200, height: 200)
+
+        // Test synchronous data write
+        let cgImage = try #require(try generator.write(data: rawData))
+        let pixelBuffer = try #require(makePixelBuffer(from: cgImage))
+
+        let scanner = BarcodeScanner(formats: [.qrCode])
+
+        // Test synchronous pixelBuffer read
+        let syncResults = try scanner.read(pixelBuffer: pixelBuffer)
+        #expect(syncResults.count == 1)
+        #expect(syncResults.first?.text == "ZxingKit PixelBuffer Test")
+
+        // Test async data write and async pixelBuffer read
+        let asyncCgImage = try #require(try await generator.writeAsync(data: rawData))
+        let asyncBuffer = try #require(makePixelBuffer(from: asyncCgImage))
+        let asyncResults = try await scanner.readAsync(pixelBuffer: asyncBuffer)
+        #expect(asyncResults.count == 1)
+        #expect(asyncResults.first?.text == "ZxingKit PixelBuffer Test")
     }
 }

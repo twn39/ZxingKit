@@ -33,6 +33,10 @@ swift build
 # Run unit and integration tests
 swift test
 
+# Run tests and generate code coverage report (96%+ coverage target)
+./scripts/coverage.sh         # Terminal summary
+./scripts/coverage.sh --html  # Generate HTML report at .build/codecov/html/index.html
+
 # Build codebase knowledge graph (excluding third-party dependencies)
 codegraph build . -e third_party/
 ```
