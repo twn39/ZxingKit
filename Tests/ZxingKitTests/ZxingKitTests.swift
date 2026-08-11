@@ -473,7 +473,64 @@ struct ZxingKitTests {
         #expect(res1.count == 1)
         #expect(res2.count == 1)
     }
+
+    @Test("Concurrent lock & state mutation stress test")
+    func testConcurrentLockStress() async throws {
+        let videoDelegate = BarcodeVideoOutputDelegate()
+
+        await withTaskGroup(of: Void.self) { group in
+            for i in 0..<100 {
+                group.addTask {
+                    let rect = CGRect(x: Double(i), y: Double(i), width: 100, height: 100)
+                    videoDelegate.roi = rect
+                    _ = videoDelegate.roi
+                    videoDelegate.onResults = { _ in }
+                    videoDelegate.onError = { _ in }
+                }
+            }
+        }
+
+        #expect(videoDelegate.roi != nil)
+    }
+
+    @Test("BarcodeGenerator object reuse performance benchmark")
+    func testBarcodeGeneratorObjectReusePerformance() throws {
+        let generator = BarcodeGenerator(format: .qrCode, width: 200, height: 200)
+        let clock = ContinuousClock()
+
+        let duration = try clock.measure {
+            for i in 0..<100 {
+                let image = try generator.write(string: "Test string reuse \(i)")
+                #expect(image != nil)
+            }
+        }
+
+        #expect(duration < .seconds(1.0), "100 barcode generations with object reuse should execute under 1.0s, actual: \(duration)")
+    }
+
+    #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+    @Test("AppKit NSImage scanning and generation platform extension")
+    func testNSImagePlatformExtension() async throws {
+        let textToEncode = "NSImage Extension Test"
+        let generator = BarcodeGenerator(format: .qrCode, width: 200, height: 200)
+
+        let nsImage = try #require(try generator.writeImage(string: textToEncode))
+        let scanner = BarcodeScanner(formats: [.qrCode])
+
+        let results = try scanner.read(image: nsImage)
+        #expect(results.count == 1)
+        #expect(results.first?.text == textToEncode)
+
+        let asyncNsImage = try #require(try await generator.writeImageAsync(string: textToEncode))
+        let asyncResults = try await scanner.readAsync(image: asyncNsImage)
+        #expect(asyncResults.count == 1)
+        #expect(asyncResults.first?.text == textToEncode)
+    }
+    #endif
 }
+
+
+
 
 extension Binarizer: @retroactive CaseIterable {
     public static var allCases: [Binarizer] = [.localAverage, .globalHistogram, .fixedThreshold, .boolCast]

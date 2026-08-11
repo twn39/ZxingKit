@@ -1,3 +1,4 @@
+#if canImport(AVFoundation) && canImport(CoreMedia)
 import Foundation
 import AVFoundation
 import CoreGraphics
@@ -51,79 +52,130 @@ public final class BarcodeVideoOutputDelegate: NSObject, AVCaptureVideoDataOutpu
 
     /// Handles incoming camera sample buffers from AVFoundation.
     public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        let currentRoi = self.roi
+        let (currentRoi, onResults, onError) = state.snapshot()
         frameScanner.processFrame(sampleBuffer, roi: currentRoi) { [weak self] result in
             guard let self = self else { return }
             switch result {
             case .success(let results):
                 if !results.isEmpty {
-                    self.onResults?(results)
+                    onResults?(results)
                     self.streamContinuation.yield(results)
                 }
             case .failure(let error):
-                self.onError?(error)
+                onError?(error)
             }
         }
     }
 }
 
-private final class LockProtectedState: @unchecked Sendable {
-    private struct MutableState {
-        var roi: CGRect?
-        var onResults: (@Sendable ([BarcodeResult]) -> Void)?
-        var onError: (@Sendable (Error) -> Void)?
-    }
+private struct VideoDelegateState {
+    var roi: CGRect?
+    var onResults: (@Sendable ([BarcodeResult]) -> Void)?
+    var onError: (@Sendable (Error) -> Void)?
+}
 
-    private let lockPointer: UnsafeMutablePointer<os_unfair_lock_s>
-    private let statePointer: UnsafeMutablePointer<MutableState>
+private final class LockProtectedState: Sendable {
+    private let impl: any LockProtectedStateImpl
 
     init() {
-        let lock = UnsafeMutablePointer<os_unfair_lock_s>.allocate(capacity: 1)
-        lock.initialize(to: os_unfair_lock_s())
-        let state = UnsafeMutablePointer<MutableState>.allocate(capacity: 1)
-        state.initialize(to: MutableState())
-        self.lockPointer = lock
-        self.statePointer = state
+        if #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) {
+            self.impl = OSUnfairLockState()
+        } else {
+            self.impl = NSLockState()
+        }
     }
 
-    deinit {
-        lockPointer.deallocate()
-        statePointer.deallocate()
+    func snapshot() -> (roi: CGRect?, onResults: (@Sendable ([BarcodeResult]) -> Void)?, onError: (@Sendable (Error) -> Void)?) {
+        impl.snapshot()
+    }
+
+    func getRoi() -> CGRect? { impl.getRoi() }
+    func setRoi(_ roi: CGRect?) { impl.setRoi(roi) }
+
+    func getOnResults() -> (@Sendable ([BarcodeResult]) -> Void)? { impl.getOnResults() }
+    func setOnResults(_ callback: (@Sendable ([BarcodeResult]) -> Void)?) { impl.setOnResults(callback) }
+
+    func getOnError() -> (@Sendable (Error) -> Void)? { impl.getOnError() }
+    func setOnError(_ callback: (@Sendable (Error) -> Void)?) { impl.setOnError(callback) }
+}
+
+private protocol LockProtectedStateImpl: Sendable {
+    func snapshot() -> (roi: CGRect?, onResults: (@Sendable ([BarcodeResult]) -> Void)?, onError: (@Sendable (Error) -> Void)?)
+    func getRoi() -> CGRect?
+    func setRoi(_ roi: CGRect?)
+    func getOnResults() -> (@Sendable ([BarcodeResult]) -> Void)?
+    func setOnResults(_ callback: (@Sendable ([BarcodeResult]) -> Void)?)
+    func getOnError() -> (@Sendable (Error) -> Void)?
+    func setOnError(_ callback: (@Sendable (Error) -> Void)?)
+}
+
+@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
+private final class OSUnfairLockState: LockProtectedStateImpl {
+    private let lock = OSAllocatedUnfairLock(initialState: VideoDelegateState())
+
+    func snapshot() -> (roi: CGRect?, onResults: (@Sendable ([BarcodeResult]) -> Void)?, onError: (@Sendable (Error) -> Void)?) {
+        lock.withLock { ($0.roi, $0.onResults, $0.onError) }
+    }
+
+    func getRoi() -> CGRect? { lock.withLock { $0.roi } }
+    func setRoi(_ roi: CGRect?) { lock.withLock { $0.roi = roi } }
+
+    func getOnResults() -> (@Sendable ([BarcodeResult]) -> Void)? { lock.withLock { $0.onResults } }
+    func setOnResults(_ callback: (@Sendable ([BarcodeResult]) -> Void)?) { lock.withLock { $0.onResults = callback } }
+
+    func getOnError() -> (@Sendable (Error) -> Void)? { lock.withLock { $0.onError } }
+    func setOnError(_ callback: (@Sendable (Error) -> Void)?) { lock.withLock { $0.onError = callback } }
+}
+
+private final class NSLockState: LockProtectedStateImpl {
+    private let lock = NSLock()
+    private final class Storage: @unchecked Sendable {
+        var state = VideoDelegateState()
+    }
+    private let storage = Storage()
+
+    func snapshot() -> (roi: CGRect?, onResults: (@Sendable ([BarcodeResult]) -> Void)?, onError: (@Sendable (Error) -> Void)?) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (storage.state.roi, storage.state.onResults, storage.state.onError)
     }
 
     func getRoi() -> CGRect? {
-        os_unfair_lock_lock(lockPointer)
-        defer { os_unfair_lock_unlock(lockPointer) }
-        return statePointer.pointee.roi
+        lock.lock()
+        defer { lock.unlock() }
+        return storage.state.roi
     }
 
     func setRoi(_ roi: CGRect?) {
-        os_unfair_lock_lock(lockPointer)
-        defer { os_unfair_lock_unlock(lockPointer) }
-        statePointer.pointee.roi = roi
+        lock.lock()
+        storage.state.roi = roi
+        lock.unlock()
     }
 
     func getOnResults() -> (@Sendable ([BarcodeResult]) -> Void)? {
-        os_unfair_lock_lock(lockPointer)
-        defer { os_unfair_lock_unlock(lockPointer) }
-        return statePointer.pointee.onResults
+        lock.lock()
+        defer { lock.unlock() }
+        return storage.state.onResults
     }
 
     func setOnResults(_ callback: (@Sendable ([BarcodeResult]) -> Void)?) {
-        os_unfair_lock_lock(lockPointer)
-        defer { os_unfair_lock_unlock(lockPointer) }
-        statePointer.pointee.onResults = callback
+        lock.lock()
+        storage.state.onResults = callback
+        lock.unlock()
     }
 
     func getOnError() -> (@Sendable (Error) -> Void)? {
-        os_unfair_lock_lock(lockPointer)
-        defer { os_unfair_lock_unlock(lockPointer) }
-        return statePointer.pointee.onError
+        lock.lock()
+        defer { lock.unlock() }
+        return storage.state.onError
     }
 
     func setOnError(_ callback: (@Sendable (Error) -> Void)?) {
-        os_unfair_lock_lock(lockPointer)
-        defer { os_unfair_lock_unlock(lockPointer) }
-        statePointer.pointee.onError = callback
+        lock.lock()
+        storage.state.onError = callback
+        lock.unlock()
     }
 }
+#endif
+
+

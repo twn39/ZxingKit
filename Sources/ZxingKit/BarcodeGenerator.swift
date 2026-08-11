@@ -10,15 +10,18 @@ public struct BarcodeGenerator: Sendable {
     public let margin: Int
     public let ecLevel: Int
 
+    private let writer: ZXIBarcodeWriter
+
     public init(format: BarcodeFormat, width: Int = 0, height: Int = 0, margin: Int = -1, ecLevel: Int = -1) {
         self.format = format
         self.width = width
         self.height = height
         self.margin = margin
         self.ecLevel = ecLevel
+        self.writer = Self.createZXIWriter(format: format, width: width, height: height, margin: margin, ecLevel: ecLevel)
     }
 
-    private func createZXIWriter() -> ZXIBarcodeWriter {
+    private static func createZXIWriter(format: BarcodeFormat, width: Int, height: Int, margin: Int, ecLevel: Int) -> ZXIBarcodeWriter {
         let options = ZXIWriterOptions(format: format.zxiFormat)
         if width > 0 { options.width = Int32(width) }
         if height > 0 { options.height = Int32(height) }
@@ -28,7 +31,6 @@ public struct BarcodeGenerator: Sendable {
     }
 
     public func write(string: String) throws -> CGImage? {
-        let writer = createZXIWriter()
         do {
             return try writer.write(string)
         } catch {
@@ -37,7 +39,6 @@ public struct BarcodeGenerator: Sendable {
     }
 
     public func write(data: Data) throws -> CGImage? {
-        let writer = createZXIWriter()
         do {
             return try writer.write(data)
         } catch {
@@ -57,3 +58,4 @@ public struct BarcodeGenerator: Sendable {
         }.value
     }
 }
+

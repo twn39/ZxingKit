@@ -140,7 +140,7 @@ using namespace ZXing;
     }
     memcpy(buffer, img.data(), dataSize);
 
-    CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceGenericGray);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceGray();
     CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, buffer, dataSize, [](void *info, const void *data, size_t size) {
         free(const_cast<void*>(data));
     });

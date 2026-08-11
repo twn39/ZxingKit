@@ -1,4 +1,6 @@
+#if canImport(AVFoundation) && canImport(CoreMedia)
 import Foundation
+import AVFoundation
 import CoreMedia
 import CoreGraphics
 import os
@@ -57,37 +59,78 @@ public final class CameraFrameScanner: Sendable {
 }
 
 /// A thread-safe, non-blocking atomic flag for backpressure detection.
-private final class AtomicFlag: @unchecked Sendable {
-    private let lockPointer: UnsafeMutablePointer<os_unfair_lock_s>
-    private let statePointer: UnsafeMutablePointer<Bool>
+private final class AtomicFlag: Sendable {
+    private let impl: any AtomicFlagImpl
 
     init() {
-        let lock = UnsafeMutablePointer<os_unfair_lock_s>.allocate(capacity: 1)
-        lock.initialize(to: os_unfair_lock_s())
-        let state = UnsafeMutablePointer<Bool>.allocate(capacity: 1)
-        state.initialize(to: false)
-        self.lockPointer = lock
-        self.statePointer = state
-    }
-
-    deinit {
-        lockPointer.deallocate()
-        statePointer.deallocate()
+        if #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) {
+            self.impl = OSUnfairAtomicFlag()
+        } else {
+            self.impl = NSLockAtomicFlag()
+        }
     }
 
     func tryLock() -> Bool {
-        os_unfair_lock_lock(lockPointer)
-        defer { os_unfair_lock_unlock(lockPointer) }
-        if statePointer.pointee {
+        impl.tryLock()
+    }
+
+    func unlock() {
+        impl.unlock()
+    }
+}
+
+private protocol AtomicFlagImpl: Sendable {
+    func tryLock() -> Bool
+    func unlock()
+}
+
+@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
+private final class OSUnfairAtomicFlag: AtomicFlagImpl {
+    private struct State {
+        var isProcessing = false
+    }
+    private let lock = OSAllocatedUnfairLock(initialState: State())
+
+    func tryLock() -> Bool {
+        lock.withLock { state in
+            if state.isProcessing {
+                return false
+            }
+            state.isProcessing = true
+            return true
+        }
+    }
+
+    func unlock() {
+        lock.withLock { state in
+            state.isProcessing = false
+        }
+    }
+}
+
+private final class NSLockAtomicFlag: AtomicFlagImpl {
+    private let lock = NSLock()
+    private final class Storage: @unchecked Sendable {
+        var isProcessing = false
+    }
+    private let storage = Storage()
+
+    func tryLock() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if storage.isProcessing {
             return false
         }
-        statePointer.pointee = true
+        storage.isProcessing = true
         return true
     }
 
     func unlock() {
-        os_unfair_lock_lock(lockPointer)
-        statePointer.pointee = false
-        os_unfair_lock_unlock(lockPointer)
+        lock.lock()
+        storage.isProcessing = false
+        lock.unlock()
     }
 }
+#endif
+
+

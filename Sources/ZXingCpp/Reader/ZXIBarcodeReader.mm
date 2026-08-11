@@ -18,7 +18,7 @@ NSString *stringToNSString(const std::string &text) {
     return [[NSString alloc]initWithBytes:text.data() length:text.size() encoding:NSUTF8StringEncoding];
 }
 
-ZXIGTIN *getGTIN(const Barcode &barcode) {
+ZXIGTIN *getGTIN(const ZXing::Barcode &barcode) {
     // Only attempt GTIN parsing for EAN/UPC barcode formats to avoid C++ exception overhead
     auto f = barcode.format();
     if (f != BarcodeFormat::EAN13 && f != BarcodeFormat::EAN8 &&
@@ -105,7 +105,7 @@ ZXIGTIN *getGTIN(const Barcode &barcode) {
                                             static_cast<const uint8_t *>(bytes),
                                             static_cast<int>(cols),
                                             static_cast<int>(rows),
-                                            ImageFormat::BGRX,
+                                            ImageFormat::BGRA,
                                             static_cast<int>(bytesPerRow),
                                             0);
             NSArray* results = [self readImageView:imageView cropRect:cropRect error:error];
@@ -122,7 +122,7 @@ ZXIGTIN *getGTIN(const Barcode &barcode) {
                                             static_cast<const uint8_t *>(bytes),
                                             static_cast<int>(cols),
                                             static_cast<int>(rows),
-                                            ImageFormat::XRGB,
+                                            ImageFormat::ARGB,
                                             static_cast<int>(bytesPerRow),
                                             0);
             NSArray* results = [self readImageView:imageView cropRect:cropRect error:error];
@@ -139,7 +139,7 @@ ZXIGTIN *getGTIN(const Barcode &barcode) {
                                             static_cast<const uint8_t *>(bytes),
                                             static_cast<int>(cols),
                                             static_cast<int>(rows),
-                                            ImageFormat::RGBX,
+                                            ImageFormat::RGBA,
                                             static_cast<int>(bytesPerRow),
                                             0);
             NSArray* results = [self readImageView:imageView cropRect:cropRect error:error];
@@ -226,7 +226,7 @@ ZXIGTIN *getGTIN(const Barcode &barcode) {
     }
 
     std::vector<uint8_t> data(targetWidth * targetHeight);
-    CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceGenericGray);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceGray();
     CGContextRef contextRef = CGBitmapContextCreate(data.data(),
                                                     targetWidth,
                                                     targetHeight,
