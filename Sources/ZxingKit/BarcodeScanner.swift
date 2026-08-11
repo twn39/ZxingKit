@@ -2,15 +2,20 @@ import Foundation
 import CoreGraphics
 import CoreImage
 import CoreVideo
+import CoreMedia
 import ZXingCpp
 
+extension ZXIBarcodeReader: @retroactive @unchecked Sendable {}
+
 /// A highly-optimized barcode scanner leveraging zxing-cpp.
-/// This type is entirely thread-safe (`Sendable`) and supports both synchronous and concurrent scanning.
+/// This type is entirely thread-safe (`Sendable`) and reuses the underlying engine reader across scans.
 public struct BarcodeScanner: Sendable {
-    private let options: ScannerOptions
+    public let options: ScannerOptions
+    private let reader: ZXIBarcodeReader
 
     public init(options: ScannerOptions = ScannerOptions()) {
         self.options = options
+        self.reader = Self.createZXIReader(from: options)
     }
 
     public init(formats: Set<BarcodeFormat> = [.any], tryHarder: Bool = false, maxNumberOfSymbols: Int = 255) {
@@ -19,61 +24,70 @@ public struct BarcodeScanner: Sendable {
         opts.tryHarder = tryHarder
         opts.maxNumberOfSymbols = maxNumberOfSymbols
         self.options = opts
+        self.reader = Self.createZXIReader(from: opts)
     }
 
-    private func createZXIReader() -> ZXIBarcodeReader {
+    private static func createZXIReader(from options: ScannerOptions) -> ZXIBarcodeReader {
         let zxiOptions = ZXIReaderOptions()
-        zxiOptions.formats = self.options.formats.map { NSNumber(value: $0.zxiFormat.rawValue) }
-        zxiOptions.tryHarder = self.options.tryHarder
-        zxiOptions.tryRotate = self.options.tryRotate
-        zxiOptions.tryInvert = self.options.tryInvert
-        zxiOptions.tryDownscale = self.options.tryDownscale
-        zxiOptions.isPure = self.options.isPure
-        zxiOptions.binarizer = ZXIBinarizer(rawValue: self.options.binarizer.rawValue) ?? .localAverage
-        zxiOptions.downscaleFactor = self.options.downscaleFactor
-        zxiOptions.downscaleThreshold = self.options.downscaleThreshold
-        zxiOptions.minLineCount = self.options.minLineCount
-        zxiOptions.maxNumberOfSymbols = self.options.maxNumberOfSymbols
-        zxiOptions.returnErrors = self.options.returnErrors
-        zxiOptions.eanAddOnSymbol = ZXIEanAddOnSymbol(rawValue: self.options.eanAddOnSymbol.rawValue) ?? .ignore
-        zxiOptions.textMode = ZXITextMode(rawValue: self.options.textMode.rawValue) ?? .HRI
+        zxiOptions.formats = options.formats.map { NSNumber(value: $0.zxiFormat.rawValue) }
+        zxiOptions.tryHarder = options.tryHarder
+        zxiOptions.tryRotate = options.tryRotate
+        zxiOptions.tryInvert = options.tryInvert
+        zxiOptions.tryDownscale = options.tryDownscale
+        zxiOptions.isPure = options.isPure
+        zxiOptions.binarizer = ZXIBinarizer(rawValue: options.binarizer.rawValue) ?? .localAverage
+        zxiOptions.downscaleFactor = options.downscaleFactor
+        zxiOptions.downscaleThreshold = options.downscaleThreshold
+        zxiOptions.minLineCount = options.minLineCount
+        zxiOptions.maxNumberOfSymbols = options.maxNumberOfSymbols
+        zxiOptions.returnErrors = options.returnErrors
+        zxiOptions.eanAddOnSymbol = ZXIEanAddOnSymbol(rawValue: options.eanAddOnSymbol.rawValue) ?? .ignore
+        zxiOptions.textMode = ZXITextMode(rawValue: options.textMode.rawValue) ?? .HRI
         return ZXIBarcodeReader(options: zxiOptions)
     }
 
-    public func read(cgImage: CGImage) throws -> [BarcodeResult] {
-        let reader = createZXIReader()
-        let results = try reader.read(cgImage)
+    public func read(cgImage: CGImage, roi: CGRect? = nil) throws -> [BarcodeResult] {
+        let results = try reader.read(cgImage, cropRect: roi ?? .zero)
         return results.map { BarcodeResult(from: $0) }
     }
 
-    public func read(ciImage: CIImage) throws -> [BarcodeResult] {
-        let reader = createZXIReader()
-        let results = try reader.read(ciImage)
+    public func read(ciImage: CIImage, roi: CGRect? = nil) throws -> [BarcodeResult] {
+        let results = try reader.read(ciImage, cropRect: roi ?? .zero)
         return results.map { BarcodeResult(from: $0) }
     }
 
-    public func read(pixelBuffer: CVPixelBuffer) throws -> [BarcodeResult] {
-        let reader = createZXIReader()
-        let results = try reader.read(pixelBuffer)
+    public func read(pixelBuffer: CVPixelBuffer, roi: CGRect? = nil) throws -> [BarcodeResult] {
+        let results = try reader.read(pixelBuffer, cropRect: roi ?? .zero)
+        return results.map { BarcodeResult(from: $0) }
+    }
+
+    public func read(sampleBuffer: CMSampleBuffer, roi: CGRect? = nil) throws -> [BarcodeResult] {
+        let results = try reader.read(sampleBuffer, cropRect: roi ?? .zero)
         return results.map { BarcodeResult(from: $0) }
     }
 
     // Async/Await support for concurrent processing
-    public func readAsync(cgImage: CGImage) async throws -> [BarcodeResult] {
+    public func readAsync(cgImage: CGImage, roi: CGRect? = nil) async throws -> [BarcodeResult] {
         try await Task.detached(priority: .userInitiated) {
-            try self.read(cgImage: cgImage)
+            try self.read(cgImage: cgImage, roi: roi)
         }.value
     }
 
-    public func readAsync(ciImage: CIImage) async throws -> [BarcodeResult] {
+    public func readAsync(ciImage: CIImage, roi: CGRect? = nil) async throws -> [BarcodeResult] {
         try await Task.detached(priority: .userInitiated) {
-            try self.read(ciImage: ciImage)
+            try self.read(ciImage: ciImage, roi: roi)
         }.value
     }
 
-    public func readAsync(pixelBuffer: CVPixelBuffer) async throws -> [BarcodeResult] {
+    public func readAsync(pixelBuffer: CVPixelBuffer, roi: CGRect? = nil) async throws -> [BarcodeResult] {
         try await Task.detached(priority: .userInitiated) {
-            try self.read(pixelBuffer: pixelBuffer)
+            try self.read(pixelBuffer: pixelBuffer, roi: roi)
+        }.value
+    }
+
+    public func readAsync(sampleBuffer: CMSampleBuffer, roi: CGRect? = nil) async throws -> [BarcodeResult] {
+        try await Task.detached(priority: .userInitiated) {
+            try self.read(sampleBuffer: sampleBuffer, roi: roi)
         }.value
     }
 }
