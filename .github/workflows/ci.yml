@@ -15,8 +15,9 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Check Swift Version & Xcode Environment
+      - name: Select Xcode 16 Toolchain
         run: |
+          sudo xcode-select -s /Applications/Xcode_16.0.app 2>/dev/null || sudo xcode-select -s /Applications/Xcode_16.app 2>/dev/null || true
           swift --version
           xcodebuild -version
 
