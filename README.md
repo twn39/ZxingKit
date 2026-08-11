@@ -1,108 +1,220 @@
+<div align="center">
+
 # ZxingKit
 
-ZxingKit is a modern, lightweight, and pure Swift wrapper for the popular C++ barcode scanning and generation library, [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp). 
+**A modern, pure-Swift wrapper for [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) — scan and generate barcodes with zero friction.**
 
-This library packages the essential `zxing-cpp` core (version 3.0.2) along with its C-based dependency, [zint](https://github.com/zint/zint) (version 2.13.0+), directly as Swift Package sources. This ensures a fully native SwiftPM experience with **zero external submodule dependencies** and **no networking required** during a build.
+[![CI](https://github.com/twn39/ZxingKit/actions/workflows/ci.yml/badge.svg)](https://github.com/twn39/ZxingKit/actions/workflows/ci.yml)
+[![Swift 6.0+](https://img.shields.io/badge/Swift-6.0%2B-F05138?logo=swift&logoColor=white)](https://swift.org)
+[![SPM](https://img.shields.io/badge/SwiftPM-compatible-brightgreen)](https://swift.org/package-manager/)
+[![Platform](https://img.shields.io/badge/platforms-iOS%2014%2B%20%7C%20macOS%2013%2B-blue)](https://developer.apple.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Features
+</div>
 
-*   **Comprehensive Barcode Reading:** Supports reading over 20 different barcode formats (QR Code, DataMatrix, Aztec, PDF417, EAN/UPC, Code128, etc.).
-*   **Comprehensive Barcode Generation:** By directly compiling `libzint` within the target, ZxingKit gains the ability to generate a vast array of 1D and 2D barcodes that the base `zxing-cpp` cannot write natively (e.g., MaxiCode, DataBar families, RMQRCode).
-*   **Modern Swift API:** Forget about Objective-C prefixed enums, `Unmanaged<CGImage>`, or unsafe memory handling. ZxingKit provides clean, native Swift types (`BarcodeFormat`, `BarcodeResult`, `ScannerOptions`).
-*   **High Performance:** Supports real-time scanning directly from `CVPixelBuffer` for AVFoundation camera streams.
-*   **Cross-Platform:** Built for iOS 14.0+ and macOS 13.0+.
-*   **Self-Contained:** Source code for `zxing-cpp` and `zint` is vendored directly inside this package to reduce build friction and bloated repositories.
+---
 
-## Installation
+ZxingKit bundles **zxing-cpp v3.0.2** and **libzint v2.13.0** directly as Swift Package sources, delivering a fully native SwiftPM experience with **zero external submodule dependencies** and **no networking required** at build time.
 
-As this is a local Swift Package inside the `Vendors` folder of your workspace, it is already integrated into the `barcode.xcodeproj` build phases. 
+## ✨ Features
 
-You can simply import it anywhere in your Swift files:
+| Capability | Details |
+|---|---|
+| 📷 **Multi-format scanning** | QR Code, DataMatrix, Aztec, PDF417, EAN/UPC, Code 128, Code 39, ITF, Codabar, MaxiCode, and more (20+ formats) |
+| 🖨️ **Rich generation** | `libzint` unlocks formats beyond native zxing-cpp: MaxiCode, DataBar, RMQRCode, GS1 composites, and more |
+| ⚡ **Real-time camera** | Direct `CVPixelBuffer` and `CMSampleBuffer` support for AVFoundation streams with zero-copy paths |
+| 🔒 **Swift 6 concurrency** | Full `Sendable` conformance, `async/await` APIs, `@unchecked Sendable` wrappers for non-Sendable Apple types |
+| 🧩 **Pure Swift API** | No ObjC prefixes, no `Unmanaged<CGImage>`, no unsafe pointers — just clean, idiomatic Swift types |
+| 📦 **Self-contained** | zxing-cpp and zint are vendored — no submodules, no CocoaPods, no Carthage |
 
-```swift
-import ZxingKit
+## 📐 Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│              Your App / SwiftUI / UIKit              │
+└───────────────────────┬─────────────────────────────┘
+                        │  import ZxingKit
+┌───────────────────────▼─────────────────────────────┐
+│  ZxingKit  (Swift)                                  │
+│  BarcodeScanner · BarcodeGenerator · BarcodeResult  │
+│  ScannerOptions · BarcodeFormat · ZxingError        │
+└───────────────────────┬─────────────────────────────┘
+                        │  ObjC++ bridge
+┌───────────────────────▼─────────────────────────────┐
+│  ZXingCpp  (Objective-C++)                          │
+│  ZXIBarcodeReader · ZXIBarcodeWriter                │
+│  ZXIReaderOptions · ZXIFormat                       │
+└──────────────┬──────────────────────────────────────┘
+               │  C++20 / libzint
+┌──────────────▼──────────────┐  ┌──────────────────┐
+│  ZXingCppCore  (C++)        │  │  libzint  (C)    │
+│  zxing-cpp v3.0.2 engine   │  │  zint v2.13.0    │
+└─────────────────────────────┘  └──────────────────┘
 ```
 
-## Technical Details & Architecture
+## 📦 Installation
 
-ZxingKit is divided into three core targets within the Swift Package Manager:
+### Swift Package Manager
 
-1.  **ZXingCppZint (C)**: Contains the stripped-down core backend of the `zint` library. It ignores UI-heavy dependencies like `libpng` (`ZINT_NO_PNG`) to ensure it only performs raw barcode matrix calculation.
-2.  **ZXingCppCore (C++)**: The `zxing-cpp` version `3.0.2` core library. It is compiled with `-DZXING_USE_BUNDLED_ZINT` to ensure barcode generation requests for formats like MaxiCode or Aztec are correctly routed to the bundled Zint backend.
-3.  **ZXingCpp (Objective-C++)**: A translation layer that bridges the modern C++20 features of `zxing-cpp` to Objective-C, enabling interoperability with Swift. It heavily utilizes `CGImage`, `CIImage`, and `CVPixelBuffer`.
-4.  **ZxingKit (Swift)**: The top-level Swift API that hides all the underlying bridging mechanics. 
+Add ZxingKit to your `Package.swift`:
 
-## Usage
+```swift
+dependencies: [
+    .package(url: "https://github.com/twn39/ZxingKit.git", from: "1.0.0")
+],
+targets: [
+    .target(
+        name: "YourTarget",
+        dependencies: ["ZxingKit"]
+    )
+]
+```
 
-### 1. Scanning a Barcode (from `CGImage` or `CVPixelBuffer`)
+Or in Xcode: **File → Add Package Dependencies…** and paste the repository URL.
+
+## 🚀 Usage
+
+### Scanning — from `CGImage`
 
 ```swift
 import ZxingKit
-import CoreVideo
 
-// 1. Initialize a scanner with optional configuration
 var options = ScannerOptions()
-options.formats = [.qrCode, .code128, .ean13]
+options.formats = [.qrCode, .dataMatrix, .pdf417]
 options.tryHarder = true
 options.tryRotate = true
-options.binarizer = .localAverage
 
 let scanner = BarcodeScanner(options: options)
 
-// 2. Scan a pixel buffer (e.g., from camera)
-do {
-    let pixelBuffer: CVPixelBuffer = ... 
-    let results = try scanner.read(pixelBuffer: pixelBuffer)
-    
-    for result in results {
-        print("Found \(result.format) with text: \(result.text)")
-        print("Corners: \(result.position?.topLeft) to \(result.position?.bottomRight)")
-    }
-} catch {
-    print("Scanning failed: \(error)")
+let cgImage: CGImage = /* your image */
+let results = try scanner.read(cgImage: cgImage)
+
+for result in results {
+    print("Format: \(result.format)")
+    print("Text:   \(result.text)")
+    print("Corners: \(String(describing: result.position))")
 }
 ```
 
-### 2. Generating a Barcode (Powered by Zint & ZXing)
-
-Generating a barcode is as simple as providing the format and the text. Since `zint` is bundled, you can generate complex codes like `MaxiCode`.
+### Scanning — live camera (`CMSampleBuffer`)
 
 ```swift
 import ZxingKit
-import CoreGraphics
+import AVFoundation
 
-// Generate a MaxiCode
-let generator = BarcodeGenerator(format: .maxicode, width: 300, height: 300)
+let scanner = BarcodeScanner()
 
-do {
-    // Generate a CGImage directly
-    if let image: CGImage = try generator.write(string: "[)>*01*9612345*001*001*80012345678") {
-        // Use the CGImage in your SwiftUI Image or UIImageView
-        // Image(decorative: image, scale: 1.0)
-    }
-} catch {
-    print("Generation failed: \(error)")
+// In AVCaptureVideoDataOutputSampleBufferDelegate:
+func captureOutput(_ output: AVCaptureOutput,
+                   didOutput sampleBuffer: CMSampleBuffer,
+                   from connection: AVCaptureConnection) {
+    let results = try? scanner.read(sampleBuffer: sampleBuffer)
+    results?.forEach { print($0.text) }
 }
 ```
 
-## Maintenance & Upgrades
+### Async scanning
 
-If you ever need to upgrade the underlying `zxing-cpp` or `zint` sources, follow these specific steps to ensure the bundled architecture remains intact:
+```swift
+import ZxingKit
 
-1. **Update ZXing-CPP Core**: 
-   - Replace the `.cpp` and `.h` files inside `Sources/ZXingCppCore` with the newer release from `zxing-cpp/core/src`.
-   - **Do not** overwrite or delete the `libzint` folder within this directory.
-2. **Update Zint Backend**: 
-   - Replace the `.c` and `.h` files inside `Sources/ZXingCppCore/libzint` with the newer release from `zint/backend` (or the specific commit referenced by `zxing-cpp`).
-3. **Handle Exclusions & Wrappers**:
-   - Ensure that `ZXingC.cpp` and `ZXingCpp.cpp` are excluded in `Package.swift` (as they conflict with our Objective-C++ wrappers).
-   - If new barcode formats are added in the C++ core, update `BarcodeFormat` in `ZxingKit.swift` and `ZXIFormat` / `ZXIFormatHelper` in `Sources/ZXingCpp/ZXIFormat.h`.
-4. **Update Version**: 
-   - Update `Version.h` manually if the `Version.h.in` template in the C++ core changes.
-5. **Verify Build**: 
-   - Run `swift test` within the `Vendors/ZxingKit` directory to ensure the Objective-C++ wrappers (`Sources/ZXingCpp`) still compile against the new C++ API.
+let scanner = BarcodeScanner()
+let ciImage: CIImage = /* your image */
 
-### Current Version Information
-- **zxing-cpp**: `v3.0.2`
-- **zint**: `v2.13.0+` (Commit: `55541e139e62b9209b71cd9b0ba9010cec28b1d9`)
-- **Integration Note**: The `zxing-cpp` writer wrapper was heavily modified to use the newer `CreateBarcodeFromText` API instead of the deprecated `MultiFormatWriter` to ensure `zint` features (like MaxiCode generation) are accessible from Swift.
+// Runs on a background task — safe to call from the main actor
+let results = try await scanner.readAsync(ciImage: ciImage)
+```
+
+### Generating a barcode
+
+```swift
+import ZxingKit
+
+// QR Code
+let qrGen = BarcodeGenerator(format: .qrCode, width: 512, height: 512)
+if let image: CGImage = try qrGen.write(string: "https://github.com/twn39/ZxingKit") {
+    // use image in UIImageView / NSImageView / SwiftUI Image(decorative: image, scale: 1)
+}
+
+// MaxiCode (requires bundled libzint)
+let maxiGen = BarcodeGenerator(format: .maxicode, width: 300, height: 300)
+if let image = try maxiGen.write(string: "[)>\u001E01\u001D9612345\u001D001\u001D001\u001D80012345678") {
+    // use image
+}
+
+// Async generation
+let image = try await qrGen.writeAsync(string: "Hello, ZxingKit!")
+```
+
+### Supported Barcode Formats
+
+<details>
+<summary>Click to expand full format list</summary>
+
+**Scan & Generate**
+
+`aztec` · `codabar` · `code39` · `code93` · `code128` · `dataBar` · `dataBarExpanded` · `dataMatrix` · `ean8` · `ean13` · `itf` · `maxicode` · `pdf417` · `qrCode` · `upca` · `upce`
+
+**Scan Only** (via zxing-cpp)
+
+`code39Extended` · `microPDF417` · `microQRCode` · `rmQRCode`
+
+**Generate Only** (via libzint extras)
+
+`dataBarLimited` · `dataBarStackedOmni` · GS1 composite variants
+
+</details>
+
+## ⚙️ Requirements
+
+| Requirement | Minimum Version |
+|---|---|
+| Swift | 6.0+ |
+| iOS | 14.0+ |
+| macOS | 13.0+ |
+| Xcode | 16.0+ |
+
+## 🔬 Running Tests & Coverage
+
+```bash
+# Run all tests
+swift test
+
+# Generate code coverage report (target: 96%+)
+./scripts/coverage.sh            # terminal summary
+./scripts/coverage.sh --html     # HTML report → .build/codecov/html/index.html
+```
+
+CI runs on every push and PR, testing against **Swift 6.0, 6.1, and 6.2** in parallel:
+
+| Xcode | Swift | Runner |
+|-------|-------|--------|
+| 16.0  | 6.0   | macos-15 |
+| 16.3  | 6.1   | macos-15 |
+| 16.4  | 6.2   | macos-15 |
+
+## 🔄 Upgrading Upstream Sources
+
+To update the bundled zxing-cpp or zint to a newer version:
+
+1. **zxing-cpp core** — copy `zxing-cpp/core/src` → `Sources/ZXingCppCore/` (preserve the `libzint/` subdirectory).
+2. **libzint backend** — copy `zint/backend/` → `Sources/ZXingCppCore/libzint/`.
+3. **ObjC++ wrapper** — copy `zxing-cpp/wrappers/ios/Sources/Wrapper` → `Sources/ZXingCpp/`.
+4. **Version.h** — update `Sources/ZXingCppCore/Version.h` if `Version.h.in` changed upstream.
+5. **Format sync** — if new barcode formats were added, keep `BarcodeFormat` (Swift) and `ZXIFormat` / `ZXIFormatHelper` (ObjC++) in 1-to-1 sync.
+6. **Verify** — run `swift test` to confirm everything compiles and all 32+ tests pass.
+
+### Current Bundled Versions
+
+| Library | Version | Notes |
+|---------|---------|-------|
+| zxing-cpp | v3.0.2 | Writer uses `CreateBarcodeFromText` API |
+| zint | v2.13.0+ (commit `55541e1`) | `ZINT_NO_PNG` — raw matrix computation only |
+
+## 📄 License
+
+ZxingKit is released under the **MIT License**. See [LICENSE](LICENSE) for details.
+
+The bundled libraries retain their respective licenses:
+- **zxing-cpp**: [Apache 2.0](https://github.com/zxing-cpp/zxing-cpp/blob/master/LICENSE)
+- **zint**: [GPL-3.0](https://sourceforge.net/p/zint/code/HEAD/tree/trunk/LICENSE)
