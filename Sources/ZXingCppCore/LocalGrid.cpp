@@ -51,6 +51,8 @@ void LocalGrid::adjustOriginAndStep(PointF& step, int radius, const std::span<co
 
 	struct DistMod {
 		double dist, modSize;
+		constexpr DistMod() = default;
+		constexpr DistMod(double d, double m) : dist(d), modSize(m) {}
 	};
 	thread_local std::vector<DistMod> distMod;
 	distMod.clear();
