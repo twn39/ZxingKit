@@ -1,3 +1,10 @@
+/*
+* Copyright 2026 Axel Waggershauser
+*/
+// SPDX-License-Identifier: Apache-2.0
+
+// This header is a 'manual' rendition of Version.h.in for SwiftPM build systems that don't use cmake
+
 #pragma once
 
 #define ZXING_READERS
@@ -10,13 +17,13 @@
 #define ZXING_ENABLE_PDF417 1
 #define ZXING_ENABLE_QRCODE 1
 
-/* #undef ZXING_EXPERIMENTAL_API */
-#define ZXING_USE_ZINT 1
+// #define ZXING_EXPERIMENTAL_API
+// #define ZXING_USE_ZINT
 
 // Version numbering
 #define ZXING_VERSION_MAJOR 3
-#define ZXING_VERSION_MINOR 0
-#define ZXING_VERSION_PATCH 2
-#define ZXING_VERSION_SUFFIX ""
+#define ZXING_VERSION_MINOR 1
+#define ZXING_VERSION_PATCH 1
+#define ZXING_VERSION_SUFFIX "" // e.g. "-rc1"
 
-#define ZXING_VERSION_STR "3.0.2"
+#define ZXING_VERSION_STR "3.1.1" ZXING_VERSION_SUFFIX

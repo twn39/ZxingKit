@@ -141,15 +141,15 @@ BarcodeFormats BarcodeFormats::list(const BarcodeFormats& filter)
 		return res;
 	}
 	for (auto f : filter) {
-		// printf("Filter for: %s\n", IdStr(f).c_str());
+		// log_l("Filter for: %s", IdStr(f).c_str());
 #define X(NAME, SYM, VAR, FLAGS, ZINT, ENABLED, HRI) \
 	if (ENABLED && SYM != '*' \
 		&& (SymbologyKey(f) == '*' ? BarcodeFormat(ZX_BCF_ID(SYM, VAR)) & f \
 								   : SYM == SymbologyKey(f) && (VariantKey(f) == ' ' || VariantKey(f) == VAR))) \
-		res.push_back(BarcodeFormat(ZX_BCF_ID(SYM, VAR))); //, printf("adding: %c %c\n", SYM, VAR);
+		res.push_back(BarcodeFormat(ZX_BCF_ID(SYM, VAR))); //, log_l("adding: %c %c", SYM, VAR);
 		ZX_BCF_LIST(X)
 #undef X
-		// printf("N: %d\n", (int)res.size());
+		// log_l("N: %d", (int)res.size());
 	}
 	return res;
 }
@@ -171,7 +171,12 @@ BarcodeFormats BarcodeFormats::list(const BarcodeFormats& filter)
 BarcodeFormats BarcodeFormats::operator&(const BarcodeFormats& other)
 {
 	std::vector<BarcodeFormat> res;
-	std::set_intersection(begin(), end(), other.begin(), other.end(), std::back_inserter(res));
+	for (auto l : formats_)
+		for (auto r : other.formats_)
+			if (l <= r)
+				res.push_back(l);
+			else if (r <= l)
+				res.push_back(r);
 	return res;
 }
 
@@ -203,7 +208,6 @@ std::string ToString(const BarcodeFormats& formats)
 
 #include "ZXAlgorithms.h"
 
-#include <cctype>
 #include <iterator>
 #include <stdexcept>
 
@@ -231,6 +235,7 @@ static const BarcodeFormatName NAMES[] = {
 	{BarcodeFormat::EAN13, "EAN-13"},
 	{BarcodeFormat::ITF, "ITF"},
 	{BarcodeFormat::MaxiCode, "MaxiCode"},
+	{BarcodeFormat::MicroPDF417, "MicroPDF417"},
 	{BarcodeFormat::MicroQRCode, "MicroQRCode"},
 	{BarcodeFormat::PDF417, "PDF417"},
 	{BarcodeFormat::QRCode, "QRCode"},

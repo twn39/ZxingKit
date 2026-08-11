@@ -67,7 +67,7 @@ struct ZxingKitTests {
     @Test("Generate and scan a MaxiCode using Zint")
     func testGenerateAndScanMaxiCode() throws {
         // MaxiCode is only generated if Zint is properly integrated
-        let textToEncode = "[)>*01*9612345*001*001*80012345678"
+        let textToEncode = "Hello MaxiCode World"
         let generator = BarcodeGenerator(format: .maxicode)
 
         let cgImage = try generator.write(string: textToEncode)

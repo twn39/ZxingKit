@@ -4,7 +4,6 @@
 
 #import "ZXIReaderOptions.h"
 #import "ReaderOptions.h"
-
 #import "ZXIFormatHelper.h"
 
 @interface ZXIReaderOptions()
@@ -13,27 +12,34 @@
 
 @implementation ZXIReaderOptions
 
-@synthesize formats = _formats;
-
 -(instancetype)init {
     self = [super init];
     self.cppOpts = ZXing::ReaderOptions();
     return self;
 }
 
--(void)setFormats:(NSArray<NSNumber*>*)formats {
-    _formats = formats;
-    ZXing::BarcodeFormats cppFormats = ZXing::BarcodeFormat::None;
-    for (NSNumber* format in formats) {
-        ZXing::BarcodeFormat fmt = BarcodeFormatFromZXIFormat((ZXIFormat)format.integerValue);
-        // Assuming there is a bitwise OR operator defined somewhere or we can just use the parsing method
-        if (cppFormats == ZXing::BarcodeFormat::None) {
-            cppFormats = fmt;
-        } else {
-            cppFormats = ZXing::BarcodeFormatsFromString(ToString(cppFormats) + "|" + ToString(fmt));
+-(NSArray<NSNumber *> *)formats {
+    NSMutableArray<NSNumber *> *formats = [NSMutableArray array];
+    // the ivar, not the property: the latter returns by value, so the reference
+    // returned by formats() would dangle for the body of the loop
+    for (auto format : _cppOpts.formats()) {
+        ZXIFormat mapped = ZXIFormatFromBarcodeFormat(format);
+        if (mapped != ZXIFormat::NONE) {
+            [formats addObject:[NSNumber numberWithInteger:mapped]];
         }
     }
-    self.cppOpts = self.cppOpts.setFormats(cppFormats);
+    return formats;
+}
+
+-(void)setFormats:(NSArray<NSNumber *> *)formats {
+    std::vector<ZXing::BarcodeFormat> nativeFormats;
+    nativeFormats.reserve(formats.count);
+
+    for (NSNumber *formatValue in formats) {
+        nativeFormats.push_back(BarcodeFormatFromZXIFormat((ZXIFormat)formatValue.integerValue));
+    }
+
+    self.cppOpts = self.cppOpts.setFormats(std::move(nativeFormats));
 }
 
 -(BOOL)tryHarder {

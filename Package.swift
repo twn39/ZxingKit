@@ -23,7 +23,6 @@ let package = Package(
                 .define("ZINT_NO_PNG")
             ],
             cxxSettings: [
-                .headerSearchPath("../ZXingCpp"),
                 .headerSearchPath("libzint"),
                 .define("ZXING_INTERNAL"),
                 .define("ZXING_USE_BUNDLED_ZINT"),

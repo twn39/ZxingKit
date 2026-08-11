@@ -1,8 +1,22 @@
+# macOS & System Files
 .DS_Store
-/.build
-/Packages
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Swift / SwiftPM / Xcode Build Artifacts
+/.build/
+/Packages/
 xcuserdata/
 DerivedData/
-.swiftpm/configuration/registries.json
-.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+.swiftpm/
+
+# Third-party & Generated Knowledge Graph
+third_party/
+.codegraph/
+
+# Environment
 .netrc

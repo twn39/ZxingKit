@@ -25,14 +25,18 @@ public enum BarcodeFormat: Int, CaseIterable, Hashable, Sendable {
     case code128
     case dataBar
     case dataBarExpanded
+    case dataBarStacked
+    case dataBarExpandedStacked
     case dataBarLimited
     case dataMatrix
     case dxFilmEdge
+    case telepen
     case ean8
     case ean13
     case itf
     case maxicode
     case pdf417
+    case microPdf417
     case qrCode
     case microQrCode
     case rmqrCode

@@ -12,10 +12,9 @@
 #include "DecoderResult.h"
 #include "DetectorResult.h"
 #include "JSON.h"
-
-#if !defined(ZXING_READERS) && !defined(ZXING_WRITERS)
+#include "Log.h"
 #include "Version.h"
-#endif
+#include "ZXAlgorithms.h"
 
 #ifdef ZXING_READERS
 #include "ReadBarcode.h"
@@ -45,6 +44,10 @@ struct CreatorOptions::Data
 	// structured_append (idx, cnt, ID)
 
 	mutable unique_zint_symbol zint;
+
+#ifndef __cpp_aggregate_paren_init // make XCode 14.x happy
+	Data(BarcodeFormat format, std::string options) : format(format), options(std::move(options)) {}
+#endif
 };
 
 // TODO: check return type
@@ -263,9 +266,7 @@ zint_symbol* CreatorOptions::zint() const
 	auto& zint = d->zint;
 
 	if (!zint) {
-#ifdef PRINT_DEBUG
-//		printf("zint version: %d, sizeof(zint_symbol): %ld, options: %s\n", ZBarcode_Version(), sizeof(zint_symbol), options().c_str());
-#endif
+//		log_l("zint version: %d, sizeof(zint_symbol): %ld, options: %s", ZBarcode_Version(), sizeof(zint_symbol), options().c_str());
 		zint.reset(ZBarcode_Create());
 
 		switch (format()) {
@@ -311,6 +312,9 @@ zint_symbol* CreatorOptions::zint() const
 
 Barcode CreateBarcode(const void* data, int size, int mode, const CreatorOptions& opts)
 {
+	if (!data || size < 1)
+		throw std::invalid_argument("Can not create a barcode from NULL or empty data");
+
 	auto zint = opts.zint();
 
 	zint->input_mode = mode == UNICODE_MODE && opts.gs1() && (opts.format() & BarcodeFormat::AllGS1) ? GS1_MODE : mode;
@@ -324,7 +328,7 @@ Barcode CreateBarcode(const void* data, int size, int mode, const CreatorOptions
 		if (auto eci = opts.eci(); eci) {
 			if (auto cs = CharacterSetFromString(*eci); cs != CharacterSet::Unknown) {
 				zint->eci = static_cast<int>(ToECI(cs));
-			} else if (std::all_of(eci->begin(), eci->end(), [](char c) { return std::isdigit(c); })) {
+			} else if (std::all_of(eci->begin(), eci->end(), IsDigit<char>)) {
 				zint->eci = std::stoi(*eci);
 			}
 		} else if (mode == DATA_MODE) {
@@ -336,12 +340,13 @@ Barcode CreateBarcode(const void* data, int size, int mode, const CreatorOptions
 		// 	zint->eci = static_cast<int>(ECI::UTF8);
 	}
 
+	if (opts.format() == BarcodeFormat::Telepen && (std::all_of((const char*)data, (const char*)data + size, IsDigit<char>)))
+		zint->symbology = BARCODE_TELEPEN_NUM;
+
 	int warning;
 	CHECK_WARN(ZBarcode_Encode_and_Buffer(zint, (uint8_t*)data, size, 0), warning);
 
-#ifdef PRINT_DEBUG
-	printf("create symbol with size: %dx%d\n", zint->width, zint->rows);
-#endif
+	log_l("create symbol with size: %dx%d", zint->width, zint->rows);
 
 #if 0 // use ReadBarcode to create Barcode object
 	auto buffer = std::vector<uint8_t>(zint->bitmap_width * zint->bitmap_height);
@@ -392,6 +397,7 @@ Barcode CreateBarcode(const void* data, int size, int mode, const CreatorOptions
 #endif
 
 	res.zint = std::move(opts.d->zint);
+	res.zintMutex = std::make_unique<std::mutex>();
 
 	return res;
 }
